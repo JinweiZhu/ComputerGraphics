@@ -1,0 +1,348 @@
+<script src=lib3.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ const int nl = 2;
+ const int ns = 2;
+
+ uniform vec3 uLDir[nl]; // LIGHT DIRECTION
+ uniform vec3 uLCol[nl]; // LIGHT COLOR
+
+ uniform vec4 uSph[ns]; // THE SPHERE
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 
+
+ // FOCAL LENGTH OF CAMERA ROUGHLY MIMICS A STANDARD 50mm LENS
+
+ float f = 3.0;
+
+ // FUNCTION TO INTERSECT A SPHERE WITH A RAY
+
+ float raySphere(vec4 S, vec3 V, vec3 W) {
+    V -= S.xyz;
+    float vw = dot(V, W);
+    float d = vw * vw - dot(V, V) + S.w * S.w;
+    return d < 0. ? -1. : -vw - sqrt(d);
+ }
+
+ void main() {
+
+ // AN ORBITING SPHERE
+
+ ///vec4 S = vec4(.5 * cos(2. * uTime), 0., .5 * sin(2. * uTime), 0.5);
+
+ // A STATIONARY SPHERE AT THE ORIGIN
+
+ ///vec4 S = vec4(0., 0., 0., 0.8);
+
+ // THE LIGHT SOURCE DIRECTION
+
+    vec3  L = uLDir[0];
+
+ // START WITH A DARK BLUE SKY
+
+    vec3 color = vec3(0., 0., 0.05);
+
+ // TRACE A RAY AT THIS PIXEL DIRECTION
+
+    vec3 V = vec3(0., 0., f);
+    vec3 W = normalize(vec3(vPos.x, vPos.y, -f));
+
+    // FIRST DETERMINE WHICH SPHERE WE HIT, IF ANY.
+
+    float t0 = 10000.; // HUGE HONKING START VALUE OF t
+    vec3 P, N;
+    int ii = -1;
+
+    for (int i = 0 ; i < ns ; i++) {
+       vec4 S = uSph[i];
+       float t = raySphere(S, V, W);
+
+       // IF THE RAY HITS THE SPHERE
+
+       if (t > 0. && t < t0) {
+          t0 = t;
+	  ii = i;
+
+          // COMPUTE SURFACE POSITION AND NORMAL DIRECTION
+   
+          P = V + t * W;
+          N = normalize(P - S.xyz);
+       }
+    }
+
+    // IF THE RAY HAS HIT AT LEAST ONE SPHERE
+
+    if (ii >= 0) {
+
+       // SET PHONG MATERIAL PROPERTIES
+
+       vec3 ambient = vec3(.1,.1,.1);
+       vec3 diffuse = vec3(.8,.8,.8);
+
+// HERE YOU SHOULD ADD: vec4 specular = ...
+		//I want the specular Color to be white, so rgb=111 for me.
+		
+    vec3 specularColor =vec3 (.5,.5,.5);
+		float specularPower =1.;
+
+       // START WITH AMBIENT COLOR OF THE OBJECT
+
+       color = ambient;
+
+       for (int i = 0 ; i < nl ; i++) {
+
+	  // SEE IF THE SURFACE POINT IS IN SHADOW FROM THIS LIGHT
+
+          vec3 Vs = P + 0.001 * uLDir[i];  // RAY FROM OUTSIDE SURFACE
+          vec3 Ws = uLDir[i];              // TOWARD LIGHT SOURCE.
+
+	  // BY SHOOTING A SHADOW RAY FOR THIS LIGHT TO EVERY SPHERE.
+
+          float t = -1.;
+          for (int j = 0 ; j < ns ; j++){
+            t = max(t, raySphere(uSph[j], Vs, Ws));
+
+	  // IF THE SURFACE POINT IS NOT IN SHADOW FROM THIS LIGHT
+
+	           if (t < 0.) {
+
+             // ADD DIFFUSE COMPONENT
+
+               color += diffuse * max(0., dot(N, uLDir[i])) * uLCol[i];
+
+             // ADD SPECULAR COMPONENT
+             	 vec3 R = 2. * dot(N,uLDir[i]) * N - uLDir[i];
+			         float d = dot(R,-W);
+			         if (d>0.) {
+				          color += uLCol[i] * specularColor * pow(d, specularPower);
+			          }
+		          }
+          }
+        }
+      }
+
+/*********************************************************************
+
+  For homework, you need to implement the specular component.
+
+  You will need four numbers:
+
+     3 numbers for the color of the specular highlight: red,green,blue
+     1 number for the power of the highlight (higher is shinier): p
+
+  You can store those four values in a vec4:
+
+     vec4 specular = vec4(red,green,blue,p);
+
+  For each light source not in shadow, you need to do the following:
+
+     (1) Compute reflection vector R = 2 * dot(N,LDir) * N - LDir
+
+     (2) Compute dot product d = dot(R,eyeDir).
+         You can use -W for eyeDir, since it points back to the eye.
+
+     (3) If d is positive, then add in the specular highlight:
+
+           color += LCol * specular * pow(d, p)
+
+*********************************************************************/
+		
+          
+       
+    
+
+// THEN DO SHADING ON THE SPHERE WE HIT, IF ANY.
+//ii==0 refers to the larger sphere.
+    if (ii == 0) {
+
+    // ANIMATED ROTATION OF THE SPHERE TEXTURE
+
+       float theta = .5 * uTime;
+       float x =  N.x * cos(theta) + N.z * sin(theta);
+       float z = -N.x * sin(theta) + N.z * cos(theta);
+
+    // FRACTAL NOISE-BASED TEXTURE TO DELINEATE LAND AND SEA
+
+       float sea = .6;
+       sea += .40 * noise( 2. * vec3(x,N.y,z));
+       sea += .20 * noise( 4. * vec3(x,N.y,z));
+       sea += .10 * noise( 8. * vec3(x,N.y,z));
+       
+       //sea += .10 * noise( 8. * vec3(x,N.y,z));
+       sea += .05 * noise(16. * vec3(x,N.y,z));
+       sea = step(sea, .55);
+
+    // NOISE-BASED TEXTURE FOR THE LAND AREAS OF THE PLANET
+
+       float m = .5 + .5 * noise(30. * vec3(x,N.y,z));
+       color *= mix(vec3(1.,.8,.1), vec3(.9,.6,.3) * m*5., sea);
+      //color *= mix(vec3(1.,.8,.1),  vec3(.9,.6,.3) * m , sea);
+    }
+
+    if (ii == 1) {
+       color *= .8 + .5 * noise(1.5 * N);
+       color *= mix(color, color, vec3(.3,.3,0.));
+    }
+
+ // NOISE-BASED ANIMATED LAYERED FOG
+
+    vec3 wind = vec3(-0.4 * uTime, 0., 0.);
+    float fog = .7 + .6 * noise(1.5 * vPos + wind);
+    float layer = 0.5 - 0.5 * vPos.y;
+    fog *= 2. * layer * layer;
+    color = mix(color, vec3(.4,.395,.3), fog);
+
+ // SET THE FINAL COLOR FOR THE PIXEL
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Shining beams of lights onto a pair of circulating planets
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+So basically, I take Professor Perlin's code and did some update<br>
+First, I implement the specular vector as instructed.<br>
+So now you can see the highlight on the upper right corner of the larger sphere<br>
+That's due to the constant beam of light from the front<br>
+I pulled a little trick with the beam of light from the back<br>
+I make the second vector of Uldir it sinusidal and also unit as well(for extra credit)<br>
+That way the second ray of light circulates over time<br>
+So it's essential that we modify that as well.
+The Moon is now changed to a marble ball. 
+The specular reflection makes it looks like a marble instead of plastic.
+Now, we will try to do something to our earth.
+With the highlight affecting the our understanding of the texture of our planets, 
+the earth no longer feels like an earth.
+So I want to make it golden instead.
+I wonder if what Professor Perlin said in class is true
+That a yellow ball with the right highlight will look like gold.
+So here we go.
+Well, it does look like a glowing golden orb.
+I wonder if I can make it a Ferreror Chocolate like orb.
+Let's take a look.
+It's not perfectly a Ferrero. If that's the case, the center would have to be brown.
+Nontheless, we are able to give the orb a crusty gold leaf kind of cover, which
+makes it very visually appealing.
+I also give the fog and the small orb a slight golden tint so everything looks coherent.
+
+
+<p>
+
+<p>
+<br>
+<br>
+<br>
+<code>uTime</code> and <code>vPos</code> can be the inputs for<br>
+a fragment shader, and <code>gl_FragColor</code><br>
+is the output.
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+
+   setUniform('1f', 'uTime', time);
+
+   // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
+
+   let r3=1/Math.sqrt(3);
+    //let unitSine = Math.sin(time) / Math.sqrt(3*Math.pow(Math.sin(time),2));
+  //  let unitCosine = Math.cos(time) / Math.sqrt(3*Math.pow(Math.cos(time),2));
+  // setUniform('3fv', 'uLDir', [ 1/ Math.sqrt(3),1 / Math.sqrt(3),1/ Math.sqrt(3),  -r3,-r3,r3] );
+   setUniform('3fv', 'uLDir', [ r3,r3,r3,  -Math.sin(time), Math.cos(time),0.] );
+
+   setUniform('3fv', 'uLCol', [ .5,.5,.5,      .5,.5,.5 ] );
+
+   let x = .7 * Math.cos(time)-time;
+   let z = .7 * Math.sin(time)-time;
+   setUniform('4fv', 'uSph', [ 0,0,0,.4,
+                               x,0,z,.2 ] );
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

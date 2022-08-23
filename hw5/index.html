@@ -1,0 +1,539 @@
+<script src=lib5.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=600 height=600></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   uniform   mat4 uMatrix;
+   varying   vec3 vPos;
+
+   // TO ANIMATE EACH VERTEX, TRANSFORM BY UNIFORM VARIABLE uMatrix.
+
+   void main() {
+      gl_Position = uMatrix * vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ const int nl = 2;
+ const int ns = 2;
+
+ uniform   mat4 uMatrix;
+
+ uniform vec3 uLDir[nl]; // LIGHT DIRECTION
+ uniform vec3 uLCol[nl]; // LIGHT COLOR
+
+ uniform vec4 uSph[ns];   // THE SPHERE
+ uniform mat4 uPhong[ns]; // PHONG PARAMETERS
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // FOCAL LENGTH OF CAMERA ROUGHLY MIMICS A STANDARD 50mm LENS
+
+ float f = 3.0;
+
+ // FUNCTION TO INTERSECT A SPHERE WITH A RAY
+
+ float raySphere(vec4 S, vec3 V, vec3 W) {
+    V -= S.xyz;
+    float vw = dot(V, W);
+    float d = vw * vw - dot(V, V) + S.w * S.w;
+    return d < 0. ? -1. : -vw - sqrt(d);
+ }
+
+ // CREATE PROCEDURAL SPHERE TEXTURES
+
+ vec3 textureSphere(int ii, vec3 N) {
+
+    // START WITH WHITE.
+
+    vec3 color = vec3(1.,1.,1.);
+
+    // MORE COMPLEX TEXTURE FOR THE PLANET.
+
+    if (ii == 0) {
+
+       // ANIMATED ROTATION OF THE SPHERE TEXTURE
+
+       float theta = 0.2 * uTime;
+       float x =  N.x * cos(theta) + N.z * sin(theta);
+       float z = -N.x * sin(theta) + N.z * cos(theta);
+
+       // FRACTAL NOISE-BASED TEXTURE TO DELINEATE LAND AND SEA
+
+       float s = .5;
+       s += 1. * noise( 2. * vec3(x,N.y,z));
+       s += .80 * noise( 2. * vec3(x,N.y,z));
+       s += .60 * noise( 2. * vec3(x,N.y,z));
+       s += .40 * noise( 2. * vec3(x,N.y,z));
+       s += .20 * noise( 4. * vec3(x,N.y,z));
+       s += .10 * noise( 8. * vec3(x,N.y,z));
+       s += .05 * noise(16. * vec3(x,N.y,z));
+       s = step(s, 0.4);
+
+       // NOISE-BASED TEXTURE FOR THE LAND AREAS OF THE PLANET
+
+       float m = .5 + .5 * noise(30. * vec3(x,N.y,z));
+       color *= mix(vec3(.1*pow(uTime,5.),.4,.4), vec3(.9,.6,.3) * m, s);
+    }
+
+    // SIMPLE COHERENT NOISE TEXTURE FOR THE MOON.
+
+    if (ii == 1) {
+       
+       // ANIMATED ROTATION OF THE SPHERE TEXTURE
+
+       float theta = 0.2 * uTime;
+       float x =  N.x * cos(theta) + N.z * sin(theta);
+       float z = -N.x * sin(theta) + N.z * cos(theta);
+
+       // FRACTAL NOISE-BASED TEXTURE TO DELINEATE LAND AND SEA
+
+       float s = .5;
+       s += .40 * noise( 2. * vec3(x,N.y,z));
+       s += .20 * noise( 4. * vec3(x,N.y,z));
+       s += .10 * noise( 8. * vec3(x,N.y,z));
+       s += .05 * noise(16. * vec3(x,N.y,z));
+       s = step(s, 0.4);
+
+       // NOISE-BASED TEXTURE FOR THE LAND AREAS OF THE PLANET
+
+       float m = .5 + .5 * noise(30. * vec3(x,N.y,z));
+       color *= mix(vec3(.1,.9,.9), vec3(.9,.6,.3) * m, s);
+    }
+
+    return color;
+ }
+
+
+ 
+
+ // SHADE A SPHERE USING PHONG REFLECTION MODEL.
+
+ vec3 shadeSphere(int ii, vec3 P, vec3 N, mat4 M, vec3 W) {
+
+    // CALCULATE TEXTURE FOR THIS SPHERE
+
+    vec3 texture = textureSphere(ii, N);
+
+    // FETCH PHONG MATERIAL PROPERTIES.
+
+    vec3 ambient = M[0].rgb;
+    vec3 diffuse = M[1].rgb;
+    vec4 specular = M[2];
+
+    // START WITH JUST AMBIENT REFLECTION.
+
+    vec3 color = ambient * texture;
+
+    // LOOP THROUGH ALL LIGHT SOURCES.
+
+    for (int i = 0 ; i < nl ; i++) {
+
+       // SEE IF THE SURFACE POINT IS IN SHADOW FROM THIS LIGHT
+
+       vec3 Vs = P + 0.001 * uLDir[i];  // RAY FROM OUTSIDE SURFACE
+       vec3 Ws = uLDir[i];              // TOWARD LIGHT SOURCE.
+       // BY SHOOTING A SHADOW RAY FOR THIS LIGHT TO EVERY SPHERE.
+
+       float t = -1.;
+       for (int j
+ = 0 ; j < ns ; j++)
+          t = max(t, raySphere(uSph[j], Vs, Ws));
+
+       // IF THE SURFACE POINT IS NOT IN SHADOW FROM THIS LIGHT
+
+       if (t < 0.) {
+
+          // ADD DIFFUSE COMPONENT
+
+          color += diffuse * max(0., dot(N, uLDir[i])) * uLCol[i] * texture;
+
+          // ADD SPECULAR COMPONENT
+          /*
+          vec3 R = 2. * N * dot(N, uLDir[i]) - uLDir[i];
+          color += specular.rgb * pow(max(0., dot(R, -W)), specular.a) * uLCol[i];
+          */
+
+       }
+    }
+    return color;
+ }
+
+ void main() {
+
+    // START WITH A DARK BLUE SKY.
+
+    vec3 color = vec3(0., 0., 0.2);
+
+    // TRACE A RAY AT THIS PIXEL DIRECTION.
+
+    vec3 V = vec3(0., 0., f);
+    vec3 W = normalize(vec3(vPos.x, vPos.y, -f));
+
+    // FIRST DETERMINE WHICH SPHERE WE HIT, IF ANY.
+
+    float t0 = 10000.; // HUGE STARTING VALUE FOR t.
+    vec3 P, N;
+    mat4 M;
+    int ii = -1;
+
+    // LOOP THROUGH ALL SPHERES.
+
+    for (int i = 0 ; i < ns ; i++) {
+       vec4 S = uSph[i];
+
+       //vec4 p = uMatrix * vec4(S.xyz, 1.);
+       //float t = raySphere(vec4(p.xyz, S.w), V, W);
+
+       float t = raySphere(S, V, W);
+
+       // IF THE RAY HITS THE SPHERE NEARER THAN ALL OTHERS
+
+       if (t > 0. && t < t0) {
+          t0 = t;
+          ii = i;
+
+          // COMPUTE SURFACE POSITION AND NORMAL DIRECTION.
+   
+          P = V + t * W;
+          N = normalize(P - S.xyz);
+          M = uPhong[i];
+       }
+    }
+
+    // IF THE RAY HAS HIT AT LEAST ONE SPHERE
+
+    if (ii >= 0) {
+
+       // SHADE AND TEXTURE THE SPHERE.
+
+       color = shadeSphere(ii, P, N, M, W);
+
+       // FORM A MIRROR REFLECTION RAY.
+
+       vec3 Wr = 2. * N * dot(N, -W) + W;
+       vec3 Vr = P + .001 * Wr;
+
+       // CHECK FOR MIRROR REFLECTION OF OTHER SPHERES.
+
+       int jj = -1;
+       vec3 Pr, Nr;
+       mat4 Mr;
+
+       float t0 = 1000.;
+       for (int j = 0 ; j < ns ; j++) {
+          float t = raySphere(uSph[j], Vr, Wr);
+	  if (t > 0. && t < t0) {
+	     t0 = t;
+	     jj = j;
+	     Pr = Vr + t * Wr;
+	     Nr = normalize(Pr - uSph[j].xyz);
+	     Mr = uPhong[j];
+	  }
+       }
+
+       // IF THERE IS A MIRROR REFLECTION, MIX IT INTO COLOR.
+
+       if (jj >= 0) {
+          vec3 mirrorColor = shadeSphere(jj, Pr, Nr, Mr, Wr);
+	  color = mix(color, mirrorColor, .5);
+       }
+    }
+
+    // ADD COHERENT NOISE-BASED ANIMATED LAYERED FOG
+/*
+    vec3 wind = vec3(-0.4 * uTime, 0., 0.);
+    float fog = .7 + .6 * noise(1.5 * vPos + wind);
+    float layer = 0.5 - 0.5 * vPos.y;
+    fog *= 2. * layer * layer;
+    color = mix(color, vec3(.1,.095,.09), fog);
+    */
+
+    // SET THE FINAL COLOR FOR THE PIXEL
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Views From A Satellite As Sun Engulfs Earth
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+We all know that as a star,<br> 
+the sun will grow bigger, whiter, and hotter overtime.<br>
+For this exercise, I have the sun engulfing the earth<br>
+as we look from afar<br>
+A few key points:<br>
+The sun goes from red to white over time.<br>
+As the sun grows bigger and heavier, <br>
+its pull of earth(gravity) increases.<br>
+So I thought about making the orbiting earth <br>
+a reciprocal spiral instead. But it turns out <br> 
+that it's much more difficult to plot<br>
+a reverse spiral. So I skip that step.<br>
+It's supposed to be negligable anyway<br>
+Also, as the earth gets closer to the sun<br>
+and the sun gets heavier,<br>
+the rotational potential energy increases,<br>
+so the earth also rotates faster over time.<br>
+I rotate the lens around the x axis also.<br>
+As if our viewer are on a satellite rotating<br>
+around the sun<br>
+The sun also has the lava like texture.<br>
+I enlongate the x axis with the MatrixScale function,<br>
+even though that might not be visible.<br>
+because we know that planet like earth are not<br>
+perfect spheres. <br>
+I also turn off the highlight to make them <br>
+look like planets. In the real universe, the <br>
+sun is the major light source,<br>
+so half of the earth facing away from the <br>
+sun should be completely black.<br>
+But that would just be visually unappealing.<br>
+So we ignore that part.<br>
+By the end of this video you will see a huge<br>
+white screen as the beginning of a new universe.<br>
+I like that conceptual representation symbolizing<br>
+a new beginning as the sun emits the massive<br>
+amount of energy it has accumulated overtime.<br>
+By the time you finish reading this,<br>
+you've seen the ultimate fate of human beings<br>
+—if we do not destroy our earth far before<br>
+our sun does the job for us.<br>
+
+
+
+now animating the vertices of the square<br>
+that contains the ray traced scene.
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+
+////////////////// VECTOR MATH LIBRARY
+
+let dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+let norm = a => Math.sqrt(dot(a,a));
+let normalize = a => { let s = norm(a); return [ a[0]/s,a[1]/s,a[2]/s ]; }
+
+
+////////////////// MATRIX LIBRARY
+
+// MULTIPLY TWO MATRICES.
+
+let matrixMultiply = (a,b) => {
+   let c = [];
+
+   // LOOP THROUGH THE 4x4 ROWS AND COLUMNS.
+
+   for (let col = 0 ; col < 4 ; col++)
+      for (let row = 0 ; row < 4 ; row++) {
+
+         // TAKE A DOT PRODUCT.
+
+         let dp = 0;
+	 for (let i = 0 ; i < 4 ; i++)
+	    dp += a[4*i + row] * b[4*col + i];
+
+	 c[4*col + row] = dp;
+      }
+
+   return c;
+}
+
+// MATRIX PRIMITIVES THAT WE WILL USE FOR ANIMATION.
+
+/*
+   I have implemented identity, translate and rotateZ.
+   You need to implement rotateX, rotateY and scale.
+*/
+
+let matrixIdentity = () => [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ];
+
+let matrixTranslate = (a, x,y,z) => {
+   let tm = [ 1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1 ];
+   return matrixMultiply(a, tm);
+}
+
+let matrixRotateX = (a, theta) => { 
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   let rm = [ 1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1 ];
+   return matrixMultiply(a, rm);}
+
+let matrixRotateY = (a, theta) => { 
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   let rm = [ c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1 ];
+   return matrixMultiply(a, rm);
+ }
+
+let matrixRotateZ = (a, theta) => {
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   let rm = [ c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1 ];
+   return matrixMultiply(a, rm);
+}
+
+let matrixScale = (a, x,y,z) => {
+  let rm = [ x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1 ];
+  return matrixMultiply(a, rm);
+ }
+
+
+////////////////// MAIN ANIMATE-FRAME CALLBACK
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+
+   setUniform('1f', 'uTime', time);
+
+   // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
+
+   let r3 = 1 / Math.sqrt(3);
+
+   let L0 = normalize([1,1,Math.sin(time)]);
+   let L1 = normalize([-1,-1,-1]);
+
+   setUniform('3fv', 'uLDir', L0.concat(L1));
+
+   setUniform('3fv', 'uLCol', [ 1,1,1,      .5,.5,.5 ] );
+
+   setUniform('Matrix4fv', 'uPhong', false, [
+      20.*time,.1*time,.1*time,0,  10.,.2,.2,0,  5.,1.,1.,5.,  0,0,0,0,
+      .1,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,5.
+      ,  0,0,0,0,
+   ]);
+
+/*
+   Here is some info about the organization of our matrices:
+
+   0 4  8 12
+   1 5  9 13    arrange matrix in column-major order.
+   2 6 10 14
+   3 7 11 15
+
+   1     tx
+     1   ty     translate
+       1 tz
+         1
+
+   c -s      
+   s  c         rotate about z
+        1   
+          1
+*/
+
+/*
+   let s = .5 + .5 * Math.sin(time);
+   setUniform('Matrix4fv', 'uMatrix', false, [
+      s,0,0,0, 0,s,0,0, 0,0,s,0, 0,0,0,1
+   ]);
+*/
+
+// DO THE MATRIX TRANSFORMATION FOR THIS ANIMATION FRAME.
+
+   let m = matrixIdentity();
+
+// NOTE THAT TRANSFORMATIONS PROCEED FROM MORE GLOBAL
+
+   //m = matrixRotateY(m, time);
+   //I have to stretch the sphere horizontally because they are not supposed to be perfect spheres
+   m = matrixScale(m, 1.1, 1, 1)
+   
+   m = matrixRotateX(m, time*0.1)
+   //m = matrixRotateY(m,.7 * Math.cos(time))
+   //m =matrixScale(m, 0.1*time, 1, 1)
+// TO MORE LOCAL.
+
+  
+ // m = matrixTranslate(m, .5*Math.cos(time*0.1),0,0);
+
+// SEND THE uMatrix DATA DOWN TO THE VERTEX SHADER.
+
+   setUniform('Matrix4fv', 'uMatrix', false, m);
+
+
+// ALSO ANIMATE THE RAY TRACED OBJECTS IN THE FRAGMENT SHADER.
+
+   let x = 0.9*Math.sin(time);
+   let z = 0.9*Math.cos(time);
+   setUniform('4fv', 'uSph', [ 0,0,0,Math.max(time*0.01,.1),
+                               x,0,z,.1 ] );
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

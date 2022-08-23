@@ -1,0 +1,637 @@
+<script src=lib7.js></script>
+<script src=matrix.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=600 height=600></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos, aNor;
+   uniform   mat4 uMatrix, uIMatrix, uCamera;
+   varying   vec3 vPos, vNor, vAPos, vANor;
+
+   // TO ANIMATE EACH VERTEX, TRANSFORM BY UNIFORM VARIABLE uMatrix.
+
+   void main() {
+      vec4 pos = uMatrix * vec4(aPos, 1.);
+      vec4 nor = vec4(aNor, 0.) * uIMatrix;
+      vPos = pos.xyz;
+      vNor = nor.xyz;
+      vAPos = aPos;
+      vANor = aNor;
+      gl_Position = (uCamera * pos) * vec4(1.,1.,0.1,1.);
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ const int nl = 2;
+
+ uniform vec3 uLDir[nl];
+ uniform vec3 uLCol[nl];
+
+ uniform mat4 uPhong[2];
+
+ varying vec3 vPos, vNor, vAPos, vANor;
+
+ void main() {
+
+    // NORMALIZE SURFACE NORMAL VECTOR
+
+    vec3 N = normalize(vNor);
+
+    // DO PHONG SHADING
+
+    vec3 ambient = uPhong[0][0].xyz;
+    vec3 diffuse = uPhong[0][1].xyz;
+    vec3 specular = uPhong[0][2].xyz;
+    float p = uPhong[0][2].w;
+
+    vec3 color = ambient;
+    for (int i = 0 ; i < nl ; i++) {
+       color += diffuse * uLCol[i] * max(0., dot(N, uLDir[i]));
+       vec3 R = 2. * N * dot(N, uLDir[i]) - uLDir[i];
+       color += specular * uLCol[i] * pow(max(0., dot(N, R)), p);
+    }
+
+    // ADD PROCEDURAL TEXTURE
+
+    color *= 1. + .5 * noise(vAPos * 3.);
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Rainbow-colored Bauhaus Chess Set
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Everytime I go to the modern art exhibition,<br>
+I am always impressed with the bauhaus designs<br>
+that employe simple geometric shape<br>
+to create concise, comfortable and affordable furnitures<br>
+Their chess set is no exception<br>
+You can pretty much guess which piece is which<br>
+even if you look at them individually<br>
+The animation mimics the viable move of each piece<br>
+This time, as always, my king lags behind my troop<br>
+"Don't leave me,"he cries.<br>
+Unfortunately, even the queen does not notice<br>
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+
+////////////////// VECTOR MATH LIBRARY
+
+let dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+let norm = a => Math.sqrt(dot(a,a));
+let normalize = a => { let s = norm(a); return [ a[0]/s,a[1]/s,a[2]/s ]; }
+
+
+////////////////// CREATE MESH SHAPES //////////////////
+
+const VERTEX_SIZE = 6;       // x,y,z, nx,ny,nz
+
+// CREATE A PARAMETRIC MESH
+
+let createMesh = (nu, nv, uvToShape, info,uPhong) => {
+   let tmp = [];
+   for (let j = 0 ; j < nv ; j++)
+   for (let i = 0 ; i <= nu ; i++) {
+      tmp = tmp.concat(uvToShape(i/nu,  j   /nv, info));
+      tmp = tmp.concat(uvToShape(i/nu, (j+1)/nv, info));
+   }
+   return new Float32Array(tmp);
+}
+
+
+// GLUE TOGETHER TWO MESHES
+
+let glueTwoMeshes = (a, b) => {
+   let vs = VERTEX_SIZE;
+
+   let c = new Float32Array(a.length + 2 * vs + b.length);
+   let nc = 0;
+
+   let append = (a, i, n) => {
+      for (let j = 0 ; j < n ; j++)
+         c[nc++] = a[i + j];
+   }
+
+   append(a, 0, a.length);
+   append(a, a.length - vs, vs);
+   append(b, 0, vs);
+   append(b, 0, b.length);
+
+   return c;
+}
+
+
+// GLUE TOGETHER AN ARRAY OF MESHES
+
+let glueMeshes = meshes => {
+   let mesh = meshes[0];
+   for (let i = 1 ; i < meshes.length ; i++)
+      mesh = glueTwoMeshes(mesh, meshes[i]);
+   return mesh;
+}
+
+
+// SQUARE MESH
+
+let uvToSquare = (u,v,info,uPhong) => {
+   let k = 2, z = 0, s = 1;
+
+   if (info) {
+      k = info[0];
+      s = info[1];
+      z = s;
+   }
+
+   let i = (k + 1) % 3;
+   let j = (k + 2) % 3;
+
+   let vertex = [];
+
+   vertex[i] = 2*u-1;
+   vertex[j] = 2*v-1;
+   vertex[k] = z;
+
+   vertex[3 + i] = 0;
+   vertex[3 + j] = 0;
+   vertex[3 + k] = s;
+
+   return vertex;
+}
+let squareMesh = createMesh(1, 1, uvToSquare);
+
+
+// CUBE MESH: GLUE TOGETHER SIX SQUARE MESHES
+
+let cubeMesh = glueMeshes([
+   createMesh(1,1, uvToSquare, [0,-1]),
+   createMesh(1,1, uvToSquare, [0, 1]),
+   createMesh(1,1, uvToSquare, [1,-1]),
+   createMesh(1,1, uvToSquare, [1, 1]),
+   createMesh(1,1, uvToSquare, [2,-1]),
+   createMesh(1,1, uvToSquare, [2, 1]),
+]);
+
+
+// TUBE MESH
+
+let uvToTube = (u,v) => {
+   let theta = 2 * Math.PI * u;
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   return [ c,s,2*v-1, c,s,0 ];
+}
+let tubeMesh = createMesh(32, 1, uvToTube);
+
+
+// DISK MESH
+
+let uvToDisk = (u,v,info) => {
+   let z = 0, nz = 1;
+
+   if (info) {
+      z = info[0];
+      nz = info[1];
+   }
+
+   let theta = 2 * Math.PI * u;
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   return [ v*c, v*s, z,   0,0,nz ];
+}
+let diskMesh = createMesh(32, 1, uvToDisk);
+
+
+// CYLINDER MESH: GLUE TOGETHER A TUBE AND TWO DISKS
+
+let createCylinderMesh = nu => {
+   return glueMeshes([
+      createMesh(nu, 1, uvToDisk, [-1,-1]),
+      createMesh(nu, 1, uvToTube),
+      createMesh(nu, 1, uvToDisk, [1,1])
+   ]);
+}
+let cylinderMesh = createCylinderMesh(8);
+
+
+// SPHERE MESH
+
+let uvToSphere = (u,v) => {
+   let phi = Math.PI * (v - .5);
+   let theta = 2 * Math.PI * u;
+   let x = Math.cos(phi) * Math.cos(theta);
+   let y = Math.cos(phi) * Math.sin(theta);
+   let z = Math.sin(phi);
+   return [ x,y,z,  x,y,z ];
+}
+let sphereMesh = createMesh(32, 16, uvToSphere);
+
+
+////////////////// MAIN ANIMATE-FRAME CALLBACK
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+
+   setUniform('1f', 'uTime', time);
+
+   // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
+
+   let L0 = normalize([1,1,1]);
+   let L1 = normalize([-1,-1,-1]);
+
+   setUniform('3fv', 'uLDir', L0.concat(L1));
+
+   setUniform('3fv', 'uLCol', [ .6,.8,1,      .5,.4,.3 ] );
+
+   setUniform('Matrix4fv', 'uPhong', false, [
+      .1,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0,
+      .1,.05,.025,0,  .2,.1,.05,0,  .8,.4,.2,2,  0,0,0,0,
+   ]);
+
+   // ANIMATE RAY TRACED OBJECTS IN THE FRAGMENT SHADER.
+
+   let x = .7 * Math.cos(time);
+   let z = .7 * Math.sin(time);
+   setUniform('4fv', 'uSph', [ 0,0,0,.4,
+                               x,0,z,.2 ] );
+
+
+// ADD PERSPECTIVE TO THE VIEW
+
+//  Perspective matrix to transform ( px, py, pz ):
+//
+//  x        1 0 0 0   px
+//  y  /---  0 1 0 0   py
+//  z  \---  0 0 1 0   pz
+//  w        X Y Z 1   1
+//
+//  Resulting point in space is: ( x/w, y/w, z/w )
+
+   let fl = 3; // FOCAL LENGTH OF CAMERA
+
+   setUniform('Matrix4fv', 'uCamera', false, [
+      1,0,0,0, 0,1,0,0, 0,0,-1,-1/fl, 0,0,0,1
+   ]);
+
+
+   // ADJUST RATE OF ANIMATION
+
+    T = Math.max(0,(4 * time-12.));
+
+   // POSITION AND SCALE THE ENTIRE SCENE
+
+   mIdentity();
+   mScale(.45,.45,.45);
+   mTranslate(0,.85,0);
+
+   // PLACE THE GROUND PLANE
+/*
+   mSave();
+     mTranslate(0,-2.65,0);
+     mRotateX(-Math.PI/2);
+     mScale(2,2,2);
+     drawifesh(squareMesh, m[mTop]);
+   mRestore();
+  */
+
+   // ROTATE THE RUNNING PERSON OVER TIME
+
+    //mRotateY(T / 3);
+
+
+ mTranslate(0,-1.5+0.03*T,0);
+
+ mSave();
+    
+    
+    //mTranslate(0,.03*T,0);
+    mTranslate(0,0,.5*Math.sin(T));
+
+	 mTranslate(0,-.5,0);
+	
+	mSave();
+	mTranslate(-2.,0,0);
+	mScale(0.1,0.1,.1);
+    drawMesh(cubeMesh, m[mTop],[
+      1.,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+
+    mSave();
+	mTranslate(-1.428,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(-.857,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(-.286,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.1,0,  .2,1.,.2,0,  .1,.8,.2,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+
+    mSave();
+	mTranslate(0.286,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.8,0,  .2,.5,.5,0,  .1,.8,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+
+	mSave();
+	mTranslate(.857,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();   
+    mSave();
+	mTranslate(1.428,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(2.,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .2,.1,1.,0,  .3,.1,.5,0,  .4,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore(); 
+mRestore(); 
+//Animations of the pawns end here.
+mSave();
+
+//Now this is the Rook
+//They should first move forward but then suddenly escape 
+//If I can implement it it would be nice.
+//But for right now, I am satisfied with this moving straight ahead.
+    mSave();
+	mTranslate(-2.,-1.+0.03*T,0);
+	mTranslate(T*0.05,0,0);
+	mScale(0.2,0.2,.2);
+    drawMesh(cubeMesh, m[mTop],[
+      .2,.1,1.,0,  .3,.1,.5,0,  .4,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(2.,-1.+0.03*T,0);
+	mTranslate(-T*0.05,0,0);
+	mScale(0.2,0.2,.2);
+    drawMesh(cubeMesh, m[mTop],[
+      1.,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+mRestore();
+
+//Now these are the knights
+//They should leap forward with the pawns.
+mSave();
+	mTranslate(0,0.1*T,0);
+	//This is the knights' movement
+	//mTranslate(0,0.1*T,0);
+	mTranslate(0.1*Math.cos(T),0,0);
+	//Because the double layer horse is hard to visualize here.
+	//I simplify it to make it a reverse L shape.
+	//It's made up of a combination of a horizontalrectangle
+	//And another vertical rectangle.
+	
+	mSave();
+	mTranslate(-1.428,-.9,.1);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(-1.3,-1.05,.1);
+	mRotateZ(Math.PI/2);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ])
+	mRestore();
+
+	mSave();
+	mTranslate(1.328,-.9,.1);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(1.2,-1.05,.1);
+	mRotateZ(Math.PI/2);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ])
+	mRestore();
+
+	
+mRestore();
+
+mSave();
+ mTranslate(0,0.06*T,0);
+//Now we make the bishops.
+//The bishops are basically just a cross.
+//So that would be 2 rectangles rotated.
+	//mTranslate(-.6,-1.,.1);
+	mSave();
+	//So we want the bishops to move in diagnals.
+	mTranslate(T*0.05,0,0);
+	mSave();
+		mTranslate(-.8,-1.,.1);
+
+		mRotateZ(Math.PI*(1/4));
+		mScale(0.28,0.05,.2);
+		drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+		mTranslate(-.8,-1.,.1);
+		mRotateZ(-Math.PI*(1/4));
+		mScale(0.28,0.05,.2);
+		drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mRestore();
+
+	mSave();
+	mTranslate(-T*0.05,0,0);
+	mSave();
+	mTranslate(.857,-1.,.1);
+	mRotateZ(Math.PI*(1/4));
+	mScale(0.28,0.05,.2);
+	drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(.857,-1.,.1);
+	mRotateZ(-Math.PI*(1/4));
+	mScale(0.28,0.05,.2);
+	drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mRestore();
+
+
+//Now finally we have the queen
+//Remember the queen is moving with the troops.
+//she is on a rampage: rotating throughout
+	mSave();
+
+	mTranslate(.05*T*Math.sin(T/2),.05*T*Math.cos(T/2),0);
+	mTranslate(-.27,-1.,.2);
+	mScale(0.2,.2,.2);
+	mRotateZ(T);
+	drawMesh(sphereMesh, m[mTop],[
+      .1,1.,.8,0,  .2,.5,.5,0,  .1,.8,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+
+
+
+mRestore();
+
+//Now we have the emperor who is totally confused
+
+	mSave();
+
+	mTranslate(.27+.1*Math.sin(T/2.),-1.-0.02*T,.2+.5*Math.sin(T/2.));
+	
+	mScale(0.2,.2,.2);
+	mRotateZ(Math.PI/4);
+
+	drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.1,0,  .2,1.,.2,0,  .1,.8,.2,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+  
+
+
+
+}
+
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

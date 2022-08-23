@@ -1,0 +1,1616 @@
+<script src=lib10.js></script>
+<script src=matrix.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=1000 height=1000></canvas>
+
+
+<!! ----------------------------- SLIDERS ----------------------------->
+
+<p>
+ROTATE VIEW <input type=range min=1 max=100 value=50 class=slider id=sceneRotateSlider>
+
+
+
+<p>
+
+player1RED <input type=range min=1 max=100 value=50 class=slider id=player1RedSlider>
+player1GRN <input type=range min=1 max=100 value=50 class=slider id=player1GrnSlider>
+player1BLU <input type=range min=1 max=100 value=50 class=slider id=player1BluSlider>
+<p>
+player2RED <input type=range min=1 max=100 value=50 class=slider id=player2RedSlider>
+player2GRN <input type=range min=1 max=100 value=50 class=slider id=player2GrnSlider>
+player2BLU <input type=range min=1 max=100 value=50 class=slider id=player2BluSlider>
+
+<!! ------------------------------------------------------------------->
+
+
+</center>
+
+</body>
+
+
+<!!-------- VERTEX SHADER -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos, aNor;
+   uniform   mat4 uMatrix, uIMatrix, uCamera;
+   varying   vec3 vPos, vNor, vAPos, vANor;
+
+   // TO ANIMATE EACH VERTEX, TRANSFORM BY UNIFORM VARIABLE uMatrix.
+
+   void main() {
+      vec4 pos = uMatrix * vec4(aPos, 1.);
+      vec4 nor = vec4(aNor, 0.) * uIMatrix;
+      vPos = pos.xyz;
+      vNor = nor.xyz;
+      vAPos = aPos;
+      vANor = aNor;
+      //gl_Position = (uCamera * pos) * vec4(1.,1.,.1,1.);
+      gl_Position = (uCamera * pos) * vec4(1.,1.,1.,1.);
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ const int nl = 2;
+
+ uniform vec3 uLDir[nl];
+ uniform vec3 uLCol[nl];
+
+ uniform mat4 uPhong[2];
+
+ varying vec3 vPos, vNor, vAPos, vANor;
+
+ void main() {
+
+    // NORMALIZE SURFACE NORMAL VECTOR
+
+    vec3 N = normalize(vNor);
+
+    // DO PHONG SHADING
+
+    vec3 ambient = uPhong[0][0].xyz;
+    vec3 diffuse = uPhong[0][1].xyz;
+    vec3 specular = uPhong[0][2].xyz;
+    float p = uPhong[0][2].w;
+
+    vec3 color = ambient;
+    for (int i = 0 ; i < nl ; i++) {
+       color += diffuse * uLCol[i] * max(0., dot(N, uLDir[i]));
+       vec3 R = 2. * N * dot(N, uLDir[i]) - uLDir[i];
+       color += specular * uLCol[i] * pow(max(0., dot(N, R)), p);
+    }
+
+    // ADD PROCEDURAL TEXTURE
+
+    //color *= .5 + .5 * noise(vAPos * 3.);
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Bauhaus Chess
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Ideas I implemented<br>
+1.Hittesting allow players to drag chess pieces accurately.<br>
+2.Chess pieces will automatically smack to the center of each squares upon moving. <br>
+3.When a piece is taken from the board, it can be laid to the edges.<br>
+4.Color of both players' pieces can be changed.<br>
+5.When one piece take another, the taken piece automatically moves top and bottom.<br>
+6.If one accidentally place one's piece on top of each other, then they show up on right or left.<br>
+7.This process is randomized with a random number generator so it seems natural.<br>
+8.Rotation of the board preserve the original order of everything.<br>
+9.Promotion of pawn is automatically a queen.<br>
+10.In some extremely rare case, promotion might be done with a knight.<br>
+11.But it's highly likely that in those cases a knight is already dead.<br>
+
+
+
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+////////////////// RESPOND TO MOUSE EVENTS.
+var iterator1;
+var iterator2;
+ var tempObject;
+ var tempObject2;
+        var tempPOS;
+var bq1;
+var bq2;
+
+let p1red = 10., p1grn = 10., p1blu = 10.;
+let p2red = 0, p2grn = 0, p2blu = 0;
+let flipped=0;
+let isDown = false, mouseX = 0, mouseY = 0;
+var colArray=new Array(-.7,-.5,-.3,-.1,.1,.3,.5,.7);
+var rowArray=new Array(-.7,-.5,-.3,-.1,.1,.3,.5,.7);
+//Create Bishop Mesh
+function closestPOS(array,mousePOS){
+  var arrayLength=array.length;
+  var minDif=10.;
+  var closest;
+  if (Math.abs(mousePOS)<=0.8){
+  for (var i=0; i<arrayLength;i++){
+    if (Math.abs(mousePOS-array[i])<minDif){
+      closest=array[i];
+      minDif=Math.abs(mousePOS-closest);
+    }
+    
+  }
+}
+else{
+  closest=mousePOS;
+  }
+  return closest;
+}
+
+
+
+
+canvas1.onPress = (x, y) => {
+  isDown = true;
+  mouseX = x;
+   mouseY = y;
+  //Remember object
+  //hitTesting();
+  //name =drawArray[i].name;
+  currentObject=object;
+  //currentObject.move(mouseX,mouseY);
+  //console.log(drawIndex);
+  //tempName =drawArray[drawIndex-1].name;
+  
+}
+
+canvas1.onDrag = (x, y, tempName) => {
+
+   mouseX = x;
+   mouseY = y;
+   //console.log(dict.get('wk'));
+   //console.log(dict.get('wk'));
+   //dict.get('wk').POS[0]=mouseX;
+   //dict.get('wk').POS[1]=mouseY;
+  //console.log(name);
+  //Remember ID
+  //
+  //console.log(currentObject);
+  //console.log(mouseX,mouseY);
+
+  currentObject.move(mouseX,mouseY); 
+  
+   //currentObject.move(mouseX,mouseY); 
+   //dict.get(tempName).POS[0]=mouseX;
+  //dict.get(tempName).POS[1]=mouseY;
+}
+
+
+canvas1.onRelease = (x, y) => {
+   isDown = false;
+   
+   let closestX=closestPOS(colArray,mouseX);
+   let closestY=closestPOS(colArray,mouseY);
+   currentObject.move(closestX,closestY);
+   console.log(closestX,closestY);
+   if ((Math.abs(closestX)<.8)&&(Math.abs(closestY)<.8)){
+      iterator1 = dict.keys();
+      for (var i=0;i<34;i++){
+        tempObject2=dict.get(iterator1.next().value);
+        if (tempObject2.name!=currentObject.name){
+          if ((tempObject2.POS[0]==currentObject.POS[0])&&(tempObject2.POS[1]==currentObject.POS[1])){
+            if (tempObject2.co!=currentObject.co){
+              if (tempObject2.co=='b'){
+                tempObject2.POS[1]=-0.9;
+                tempObject2.POS[0]=0.1*Math.floor(Math.random() * 18)-1.;
+              }
+              else{
+                tempObject2.POS[1]=-0.9;
+                tempObject2.POS[0]=0.1*Math.floor(Math.random() * 18)-1.;
+              }
+            }
+            else{
+              if (currentObject.co=='b'){
+                currentObject.POS[0]=0.9;
+                currentObject.POS[1]=0.1*Math.floor(Math.random() * 9)-1.;
+              }
+              else{
+                currentObject.POS[0]=-0.9;
+                currentObject.POS[1]=0.1*Math.floor(Math.random() * 9)-1.;
+              }
+            }
+          }
+          }
+        }
+     
+    }
+    //Here we deal with the promotion issue
+    if ((Math.abs(closestX)<.8)&&(Math.abs(closestY)<.8)){
+        if (currentObject.constructor.name=='pawn'){
+          
+          if (Math.abs(closestY)==.7){
+            console.log('alo');
+            if (currentObject.co=='b'){
+              
+              bq1.move(currentObject.POS[0],currentObject.POS[1],0);
+              if (bq1){
+                console.log("lalalalala");
+              }
+              currentObject.POS[0]=0.9;
+                currentObject.POS[1]=0.1*Math.floor(Math.random() * 9)-1.;
+                console.log(bq1);
+             
+            }
+            else{
+              
+             wq1=new queen(new Array(currentObject.POS[0],currentObject.POS[1],0),'wq1');
+              currentObject.POS[0]=0.9;
+                currentObject.POS[1]=0.1*Math.floor(Math.random() * 9)-1.;
+              wq1.draw();
+            }
+          }
+        }
+}
+}
+canvas1.onMove = (x, y) => {
+   mouseX = x;
+   mouseY = y;
+}
+
+////////////////// VECTOR MATH LIBRARY
+
+let dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+let norm = a => Math.sqrt(dot(a,a));
+let normalize = a => { let s = norm(a); return [ a[0]/s,a[1]/s,a[2]/s ]; }
+let subtract = (a, b) => [ a[0] - b[0], a[1] - b[1], a[2] - b[2] ];
+
+
+////////////////// CREATE MESH SHAPES //////////////////
+
+const VERTEX_SIZE = 6;       // x,y,z, nx,ny,nz
+
+// CREATE A PARAMETRIC MESH
+
+let createMesh = (nu, nv, uvToShape, info) => {
+   let tmp = [];
+   for (let j = 0 ; j < nv ; j++)
+   for (let i = 0 ; i <= nu ; i++) {
+      tmp = tmp.concat(uvToShape(i/nu,  j   /nv, info));
+      tmp = tmp.concat(uvToShape(i/nu, (j+1)/nv, info));
+   }
+   return new Float32Array(tmp);
+}
+
+
+// GLUE TOGETHER TWO MESHES
+
+let glueTwoMeshes = (a, b) => {
+   let vs = VERTEX_SIZE;
+
+   let c = new Float32Array(a.length + 2 * vs + b.length);
+   let nc = 0;
+
+   let append = (a, i, n) => {
+      for (let j = 0 ; j < n ; j++)
+         c[nc++] = a[i + j];
+   }
+
+   append(a, 0, a.length);
+   append(a, a.length - vs, vs);
+   append(b, 0, vs);
+   append(b, 0, b.length);
+
+   return c;
+}
+
+
+// GLUE TOGETHER AN ARRAY OF MESHES
+
+let glueMeshes = meshes => {
+   let mesh = meshes[0];
+   for (let i = 1 ; i < meshes.length ; i++)
+      mesh = glueTwoMeshes(mesh, meshes[i]);
+   return mesh;
+}
+
+
+// SQUARE MESH
+
+let uvToSquare = (u,v,info) => {
+   let k = 2, z = 0, s = 1;
+
+   if (info) {
+      k = info[0];
+      s = info[1];
+      z = s;
+   }
+
+   let i = (k + 1) % 3;
+   let j = (k + 2) % 3;
+
+   let vertex = [];
+
+   vertex[i] = 2*u-1;
+   vertex[j] = 2*v-1;
+   vertex[k] = z;
+
+   vertex[3 + i] = 0;
+   vertex[3 + j] = 0;
+   vertex[3 + k] = s;
+
+   return vertex;
+}
+let squareMesh = createMesh(1, 1, uvToSquare);
+
+
+// CUBE MESH: GLUE TOGETHER SIX SQUARE MESHES
+
+let cubeMesh = glueMeshes([
+   createMesh(1,1, uvToSquare, [0,-1]),
+   createMesh(1,1, uvToSquare, [0, 1]),
+   createMesh(1,1, uvToSquare, [1,-1]),
+   createMesh(1,1, uvToSquare, [1, 1]),
+   createMesh(1,1, uvToSquare, [2,-1]),
+   createMesh(1,1, uvToSquare, [2, 1]),
+]);
+
+
+// TUBE MESH
+
+let uvToTube = (u,v) => {
+   let theta = 2 * Math.PI * u;
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   return [ c,s,2*v-1, c,s,0 ];
+}
+let tubeMesh = createMesh(32, 1, uvToTube);
+
+
+// DISK MESH
+
+let uvToDisk = (u,v,info) => {
+   let z = 0, nz = 1;
+
+   if (info) {
+      z = info[0];
+      nz = info[1];
+   }
+
+   let theta = 2 * Math.PI * u;
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   return [ v*c, v*s, z,   0,0,nz ];
+}
+let diskMesh = createMesh(32, 1, uvToDisk);
+
+
+// CYLINDER MESH: GLUE TOGETHER A TUBE AND TWO DISKS
+
+let createCylinderMesh = nu => {
+   return glueMeshes([
+      createMesh(nu, 1, uvToDisk, [-1,-1]),
+      createMesh(nu, 1, uvToTube),
+      createMesh(nu, 1, uvToDisk, [1,1])
+   ]);
+}
+let cylinderMesh = createCylinderMesh(8);
+
+//Create Knight Mesh
+/*
+  mSave();
+  mTranslate(-1.3,-1.05,.1);
+  mRotateZ(Math.PI/2);
+  mScale(0.2,0.08,.1);
+  drawMesh(cubeMesh, [1,1,1]);
+  mRestore();
+*/
+let rotateScene = 0;
+var p1c=new Array(p1red,p1grn,p1blu);
+var p2c=new Array(p2red,p2grn,p2blu);
+let dict = new Map();
+function charAt(string, index) {
+  var charAt = string[index];
+  return charAt;
+}
+//var co;
+
+class piece {
+  constructor(POSarray, name) {
+    this.POS = POSarray;
+    this.name=name;
+  }
+  move(mouseX,mouseY){
+    //if （isDown）{
+      //Identity()
+      mSave();
+      //mTranslate(mouseX,mouseY,0);
+      this.POS[0]=mouseX;
+      this.POS[1]=mouseY;
+      console.log(mouseX);
+      console.log(mouseY);
+      //this.draw();
+      mRestore();
+   //}
+  }
+}
+
+class king extends piece{
+  constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+ 
+	draw(){
+	mSave();
+		 mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+     mScale(.45,.45,.45);
+      mScale(.75,.75,.75);
+      /*
+			mSave();
+			mTranslate(0,0,-.25);
+			mScale(0.25,.25,.25);
+      if (this.co=='b'){
+			drawMesh(cubeMesh, p2c,this.name);
+    }
+      else if (this.co=='w'){
+        drawMesh(cubeMesh, p1c,this.name);
+      }
+			mRestore();
+      */
+		mScale(0.2,.2,.2);
+		mRotateZ(Math.PI/4);
+		if (this.co==='b'){
+      drawMesh(cubeMesh, p2c,this.name);
+    }
+      else if (this.co==='w'){
+        drawMesh(cubeMesh, p1c,this.name);
+      }
+
+	mRestore();
+
+	}
+ 
+   
+drawMesh}
+
+class queen extends piece{
+	constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+	draw(){
+	mSave();
+		mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+    mScale(.45,.45,.45);
+		mSave();
+		mScale(0.2,.2,.2);
+    if (this.co==='b'){
+		drawMesh(sphereMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(sphereMesh, p1c,this.name);
+  }
+
+		mRestore();
+    /*
+		mSave();
+		mTranslate(0,0,-.25);
+		mScale(0.25,.25,.25);
+    if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+		//drawMesh(cubeMesh, [1,1,1],this.name);
+		mRestore();
+    */
+	mRestore();
+	}
+ 
+   
+}
+
+class pawn extends piece{
+
+	constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+
+	draw(){
+	mSave();
+	mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+	mScale(.45,.45,.45);
+
+	mScale(0.12,0.12,.12);
+  if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+	//drawMesh(cubeMesh, [1,1,1],this.name);
+ 	mRestore();
+
+	}
+ 
+   
+}
+
+class rook extends piece{
+	constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+
+	draw(){
+	mSave();
+	mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+	mScale(.45,.45,.45);
+
+	mScale(0.20,0.20,.20);
+  if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+	
+ 	mRestore();
+
+	}
+ 
+   
+}
+
+
+class knight extends piece{
+	constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+	draw(){
+	mSave();
+	mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+  mScale(.45,.45,.45);
+	mSave();
+	//mTranslate(1.328,-.9,.1);
+  mTranslate(0,.1,0);
+	mScale(0.2,0.1,.1);
+
+  if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+	
+	mRestore();
+
+	mSave();
+	//mTranslate(1.2,-1.05,.1);
+	mRotateZ(Math.PI/2);
+  mTranslate(0,.1,0);
+	mScale(0.2,0.1,.1);
+  if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+
+	mRestore();
+	mRestore();
+	}
+   //mIdentity();
+   
+}
+
+class bishop extends piece{
+	constructor(POSarray, name) {
+    super();
+    this.POS = POSarray;
+    this.name=name;
+    this.co=(this.name).charAt(0);
+  }
+	draw(){
+	mSave();
+	mTranslate(this.POS[0],this.POS[1],this.POS[2]);
+  mScale(.45,.45,.45);
+	mSave();
+		mRotateZ(Math.PI*(1/4));
+		mScale(0.22,0.075,.2);
+    if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+		
+	mRestore();
+	mSave();
+		mRotateZ(-Math.PI*(1/4));
+		mScale(0.22,0.075,.2);
+    if (this.co==='b'){
+    drawMesh(cubeMesh, p2c,this.name);
+  }
+  else if (this.co==='w'){
+    drawMesh(cubeMesh, p1c,this.name);
+  }
+		
+	mRestore();
+	mRestore();
+
+	}
+   //mIdentity();
+   
+}
+  
+// SPHERE MESH
+
+let uvToSphere = (u,v) => {
+   let phi = Math.PI * (v - .5);
+   let theta = 2 * Math.PI * u;
+   let x = Math.cos(phi) * Math.cos(theta);
+   let y = Math.cos(phi) * Math.sin(theta);
+   let z = Math.sin(phi);
+   return [ x,y,z,  x,y,z ];
+}
+let sphereMesh = createMesh(32, 16, uvToSphere);
+
+
+// LATHE MESH
+
+let epsilon = 0.001;
+
+let uvToLathe = (u,v,info) => {
+   let theta = 2 * Math.PI * u;
+   let z0 = evalCatmullRomSpline(v-epsilon/2, info[0]);
+   let z1 = evalCatmullRomSpline(v+epsilon/2, info[0]);
+   let r0 = evalCatmullRomSpline(v-epsilon/2, info[1]);
+   let r1 = evalCatmullRomSpline(v+epsilon/2, info[1]);
+   let x = r0 * Math.cos(theta);
+   let y = r0 * Math.sin(theta);
+   let N = normalize([x,y,(r0-r1)/(z1-z0)]);
+   return [x,y,z0,  N[0],N[1],N[2] ];
+}
+
+
+
+////////////////// MAIN ANIMATE-FRAME CALLBACK
+
+let time = 0, now = Date.now(), nowX = 0, nowY = 0, varyX = 0, varyZ = 0;
+
+let fl = 3; // FOCAL LENGTH OF CAMERA
+
+let row1=.7;
+  let row2=.5;
+  let row3=.3;
+  let row4=.1;
+  let row5=-.1;
+  let row6=-.3;
+  let row7=-.5;
+  let row8=-.7;
+
+  let col1=-.7;
+  let col2=-.5;
+  let col3=-.3;
+  let col4=-.1;
+let col5=.1;
+let col6=.3;
+let col7=.5;
+let col8=.7;
+
+var bp1=new pawn(new Array(col1,row2,0),'bp1');
+  
+  var bp2=new pawn(new Array(col2,row2,0),'bp2');
+
+  var bp3=new pawn(new Array(col3,row2,0),'bp3');
+
+  var bp4=new pawn(new Array(col4,row2,0),'bp4');
+
+  var bp5=new pawn(new Array(col5,row2,0),'bp5');
+
+  var bp6=new pawn(new Array(col6,row2,0),'bp6');
+
+  var bp7=new pawn(new Array(col7,row2,0),'bp7');
+
+  var bp8=new pawn(new Array(col8,row2,0),'bp8');
+
+
+    var br1=new rook(new Array(col1,row1,0),'br1');
+
+  var br2=new rook(new Array(col8,row1,0),'br2');
+
+
+  var bn1 = new knight(new Array(col2,row1,0),'bn1');
+
+
+  var bn2 = new knight(new Array(col7,row1,0),'bn2');
+
+
+  var bb1= new bishop(new Array(col3,row1,0),'bb1');
+
+  var bb2= new bishop(new Array(col6,row1,0),'bb2');
+
+
+  var bq=new queen(new Array(col4,row1,0),'bq');
+
+  var bk=new king(new Array(col5,row1,0),'bk');
+
+  //Backup queen
+ var bq1=new queen(new Array(2.,2.,0),'bq1');
+
+
+var wp1=new pawn(new Array(col1,row7,0),'wp1');
+	
+	var wp2=new pawn(new Array(col2,row7,0),'wp2');
+
+	var wp3=new pawn(new Array(col3,row7,0),'wp3');
+
+	var wp4=new pawn(new Array(col4,row7,0),'wp4');
+
+	var wp5=new pawn(new Array(col5,row7,0),'wp5');
+
+	var wp6=new pawn(new Array(col6,row7,0),'wp6');
+
+	var wp7=new pawn(new Array(col7,row7,0),'wp7');
+
+	var wp8=new pawn(new Array(col8,row7,0),'wp8');
+
+
+    var wr1=new rook(new Array(col1,row8,0),'wr1');
+
+	var wr2=new rook(new Array(col8,row8,0),'wr2');
+
+
+	var wn1 = new knight(new Array(col2,row8,0),'wn1');
+
+
+	var wn2 = new knight(new Array(col7,row8,0),'wn2');
+
+
+	var wb1= new bishop(new Array(col3,row8,0),'wb1');
+
+	var wb2= new bishop(new Array(col6,row8,0),'wb2');
+
+
+	var wq=new queen(new Array(col4,row8,0),'wq');
+  var wq1=new queen(new Array(2.,2.,0),'bq1');
+
+	var wk=new king(new Array(col5,row8,0),'wk');
+//drak square of the chessboard
+var black=new Array(0.76,1.53,1.);
+//light square of the chessboard
+var white=new Array(4,3,3);
+
+var trueBlack=new Array(0,0,0);
+var brown= new Array(1.53,0.76,0);
+
+
+
+
+//var p2c=new Array(0,0,0);
+
+function animate(gl) {
+p1c=new Array(p1red,p1grn,p1blu);
+p2c=new Array(p2red,p2grn,p2blu);
+   //let time = (Date.now() - startTime) / 1000;
+
+
+   // WHENEVER MOUSE IS PRESSED, STOP TIME AND DRAG FIGURE POSITION.
+
+   if (! isDown)
+      time += (Date.now() - now) / 1000;
+   else {
+      varyX += mouseX - nowX;
+      varyZ -= mouseY - nowY;
+   }
+
+   now  = Date.now();
+   nowX = mouseX;
+   nowY = mouseY;
+
+   setUniform('1f', 'uTime', time);
+
+
+   // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
+
+   let L0 = normalize([1,1,1]);
+   let L1 = normalize([-1,-1,-1]);
+
+/*
+let L0 = normalize([0,1,0]);
+   let L1 = normalize([0,-1,0]);
+*/
+   setUniform('3fv', 'uLDir', L0.concat(L1));
+
+   setUniform('3fv', 'uLCol', [ .6,.8,1,      .5,.4,.3 ] );
+
+   // USED red,grn,blu SLIDER VALUES TO CONTROL OBJECT COLOR.
+
+   setColor([1,1,1]);
+
+   // ANIMATE RAY TRACED OBJECTS IN THE FRAGMENT SHADER.
+
+   let x = .7 * Math.cos(time);
+   let z = .7 * Math.sin(time);
+   setUniform('4fv', 'uSph', [ 0,0,0,.4,
+                               x,0,z,.2 ] );
+
+
+// ADD PERSPECTIVE TO THE VIEW
+
+//  Perspective matrix to transform ( px, py, pz ):
+//
+//  x        1 0 0 0   px
+//  y  /---  0 1 0 0   py
+//  z  \---  0 0 1 0   pz
+//  w        X Y Z 1   1
+//
+//  Resulting point in space is: ( x/w, y/w, z/w )
+
+   setUniform('Matrix4fv', 'uCamera', false, [
+      1,0,0,0, 0,1,0,0, 0,0,-1,-1/fl, 0,0,0,1
+   ]);
+  
+   
+   
+/*
+   setUniform('Matrix4fv', 'uCamera', false, [
+      1,0,0,0, 0,1,0,0, 0,0,-1,0, 0,0,0,1
+   ]);
+   */
+
+
+
+   // DRAW THE SCENE
+ //mTranslate(0,0,-.5);
+ 
+
+   // POSITION AND SCALE THE ENTIRE SCENE
+ 
+   mIdentity();
+   // DRAW THE CURSOR
+   mSave();
+   mRotateZ(rotateScene*Math.PI);
+
+   mSave();
+    //mTranslate(0,-.2,0);
+    mTranslate(mouseX, mouseY, 0);
+      mScale(.05, .05, .0001);
+      
+
+      //console.log(mouseX,mouseY);
+      //drawMesh(cubeMesh, [1,0,0]);
+   mRestore();
+   //mScale(.45,.45,.45);
+   //mTranslate(0,-.4,0);
+   //Draw a Background as ChessBoard so I can see.
+   mSave();
+    //mTranslate(col1,row1,0);
+    mScale(5.,5.,5.);
+    drawMesh(squareMesh,brown);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row1,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row1,0);
+    mScale(.1,.1,.01);
+    
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+    
+    mSave();
+    mTranslate(col7,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row2,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row3,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+
+    mSave();
+    mTranslate(col1,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row4,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row5,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row6,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row7,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col1,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col3,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col5,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col7,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,black);
+    mRestore();
+
+    mSave();
+    mTranslate(col2,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col4,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col6,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mSave();
+    mTranslate(col8,row8,0);
+    mScale(.1,.1,.01);
+    drawMesh(squareMesh,white);
+    mRestore();
+
+    mRestore();
+    //let a =;
+	
+	wp1.draw();
+	
+	wp2.draw();
+	
+	wp3.draw();
+	
+	wp4.draw();
+	
+	wp5.draw();
+	
+	wp6.draw();
+	
+	wp7.draw();
+	
+	wp8.draw();
+
+    
+	wr1.draw();
+	
+	wr2.draw();
+
+	
+	wn1.draw();
+
+	
+	wn2.draw();
+
+
+	wb1.draw();
+	wb2.draw();
+
+	
+	wq.draw();
+	wq1.draw();
+	wk.draw();
+
+bp1.draw();
+  
+  bp2.draw();
+  
+  bp3.draw();
+  
+  bp4.draw();
+  
+  bp5.draw();
+  
+  bp6.draw();
+  
+  bp7.draw();
+  
+  bp8.draw();
+
+    
+  br1.draw();
+  
+  br2.draw();
+
+  
+  bn1.draw();
+
+  
+  bn2.draw();
+
+
+  bb1.draw();
+  bb2.draw();
+
+  
+  bq.draw();
+  bq1.draw()
+  bk.draw();
+
+dict.set('bp1',bp1);
+dict.set('bp2',bp2);
+dict.set('bp3',bp3);
+dict.set('bp4',bp4);
+dict.set('bp5',bp5);
+dict.set('bp6',bp6);
+dict.set('bp7',bp7);
+dict.set('bp8',bp8);
+dict.set('br1',br1);
+dict.set('br2',br2);
+dict.set('bb1',bb1);
+dict.set('bb2',bb2);
+dict.set('bn1',bn1);
+dict.set('bn2',bn2);
+dict.set('bk',bk);
+dict.set('bq',bq);
+dict.set('bq1',bq1);
+dict.set('wp1',wp1);
+dict.set('wp2',wp2);
+dict.set('wp3',wp3);
+dict.set('wp4',wp4);
+dict.set('wp5',wp5);
+dict.set('wp6',wp6);
+dict.set('wp7',wp7);
+dict.set('wp8',wp8);
+dict.set('wr1',wr1);
+dict.set('wr2',wr2);
+dict.set('wb1',wb1);
+dict.set('wb2',wb2);
+dict.set('wn1',wn1);
+dict.set('wn2',wn2);
+dict.set('wk',wk);
+dict.set('wq',wq);
+dict.set('wq1',wq1);
+
+
+// START EVERYTHING.
+/*
+window.onload = function() {
+       //when the document is finished loading, replace everything
+       //between the <a ...> </a> tags with the value of splitText
+   document.getElementById("lib10.js").innerHTML=dict;
+}
+*/
+
+
+
+
+   
+}
+
+function hitTesting() {
+   let ray = {
+      V: [0,0,fl],
+      W: normalize([mouseX, mouseY, -fl])
+   };
+
+   let transformRay = (ray, M) => {
+      return {
+         V:           matrixTransform(M, ray.V.concat([1])).slice(0,3),
+         W: normalize(matrixTransform(M, ray.W.concat([0])).slice(0,3))
+      };
+   }
+
+   // YOU CAN IMPLEMENT DIFFERENT SHAPES HERE
+
+   let rayTraceToUnitSphere = ray => {
+      let B = dot(ray.V, ray.W);
+      let C = dot(ray.V, ray.V) - 1;
+      return B * B > C ? -B - Math.sqrt(B * B - C) : -1;
+   }
+
+/*
+   let rayTraceToUnitCube = ray => {
+      ...
+   }
+
+   let rayTraceToUnitCylinder = ray => {
+      ...
+   }
+*/
+
+   hitIndex = -1;
+   let T = 1000000, t = -1;
+   for (let i = 0 ; i < drawArray.length ; i++) {
+      let mesh   = drawArray[i].mesh,
+          matrix = drawArray[i].matrix,
+          rgb    = drawArray[i].rgb,
+          name   =drawArray[i].name;
+
+      let objectRay = transformRay(ray, matrixInverse(matrix));
+
+      t = rayTraceToUnitSphere(objectRay); 
+      
+
+      if (t >= 0 && t < T) {
+         T = t;
+	 hitIndex = i;
+      }
+   }
+}
+
+let catmullRomMatrix = [ -.5,1,-.5,0, 1.5,-2.5,0,1, -1.5,2,.5,0, .5,-.5,0,0 ];
+
+let evalCatmullRomSpline = (t, K) => {
+   t = Math.max(0, Math.min(t, .9999));
+   let n = K.length - 1;
+   let i = Math.floor(n * t);
+   let f = (n * t) % 1.0;
+
+   let A = K[Math.max(0, i-1)];
+       B = K[i];
+       C = K[i+1];
+       D = K[Math.min(n, i+2)];
+
+   let c = matrixTransform(catmullRomMatrix, [A,B,C,D]);
+
+   return c[0] * f*f*f + c[1] * f*f + c[2] * f + c[3];
+}
+
+let latheMesh = createMesh(32, 32, uvToLathe,
+[
+   [-1,-.7,0,.7,1], // VARY Z AS A FUNCTION OF V
+   [0,.5,.1,.2,0]   // VARY R AS A FUNCTION OF V
+]);
+
+
+/////////////////////////////////////////////////
+//
+// SLIDERS CALLBACK FUNCTIONS
+
+sceneRotateSlider.oninput = function() {
+   rotateScene = (this.value) / 100;
+   if (rotateScene!=.01){
+      if ((rotateScene==1.)&&(flipped==0)){
+        iterator1 = dict.keys();
+       
+        for (var i=0;i<34;i++){
+          tempObject=dict.get(iterator1.next().value);
+          tempPOS=tempObject.POS[1];
+          tempObject.POS[1]=-tempPOS;
+          
+        }
+          
+        
+        flipped=1;
+      }
+
+   }
+
+   else{
+    rotateScene=0;
+    if (flipped==1){
+      iterator1 = dict.keys();
+        for (var i=0;i<34;i++){
+          tempObject=dict.get(iterator1.next().value);
+          tempPOS=tempObject.POS[1];
+          tempObject.POS[1]=-tempPOS;
+          
+        }
+      flipped=0;
+    }
+  console.log("haha");
+   }
+}
+
+
+
+
+player1RedSlider.oninput = function() { p1red = 3.*this.value / 100; }
+player1GrnSlider.oninput = function() { p1grn = 3.*this.value / 100; }
+player1BluSlider.oninput = function() { p1blu = 3.*this.value / 100; }
+
+player2RedSlider.oninput = function() { p2red = 3.*this.value / 100; }
+player2GrnSlider.oninput = function() { p2grn = 3.*this.value / 100; }
+player2BluSlider.oninput = function() { p2blu = 3.*this.value / 100; }
+
+/////////////////////////////////////////////////
+
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

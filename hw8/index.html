@@ -1,0 +1,749 @@
+<script src=lib6.js></script>
+<script src=matrix.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=600 height=600></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   uniform   mat4 uMatrix, uCamera;
+   varying   vec3 vPos;
+
+   // TO ANIMATE EACH VERTEX, TRANSFORM BY UNIFORM VARIABLE uMatrix.
+
+   void main() {
+      vPos = aPos;
+      gl_Position = (uCamera * uMatrix * vec4(aPos, 1.)) * vec4(1.,1.,0.1,1.);
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ const int nl = 2;
+ const int ns = 2;
+
+ uniform   mat4 uMatrix;
+
+ uniform vec3 uLDir[nl]; // LIGHT DIRECTION
+ uniform vec3 uLCol[nl]; // LIGHT COLOR
+
+ uniform vec4 uSph[ns];   // THE SPHERE
+ uniform mat4 uPhong[ns]; // PHONG PARAMETERS
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // FOCAL LENGTH OF CAMERA ROUGHLY MIMICS A STANDARD 50mm LENS
+
+ float f = 3.0;
+
+ // FUNCTION TO INTERSECT A SPHERE WITH A RAY
+
+ float raySphere(vec4 S, vec3 V, vec3 W) {
+    V -= S.xyz;
+    float vw = dot(V, W);
+    float d = vw * vw - dot(V, V) + S.w * S.w;
+    return d < 0. ? -1. : -vw - sqrt(d);
+ }
+
+ // CREATE PROCEDURAL SPHERE TEXTURES
+
+ vec3 textureSphere(int ii, vec3 N) {
+
+    // START WITH WHITE.
+
+    vec3 color = vec3(1.,1.,1.);
+
+    // MORE COMPLEX TEXTURE FOR THE PLANET.
+
+    if (ii == 0) {
+
+       // ANIMATED ROTATION OF THE SPHERE TEXTURE
+
+       float theta = 0.2 * uTime;
+       float x =  N.x * cos(theta) + N.z * sin(theta);
+       float z = -N.x * sin(theta) + N.z * cos(theta);
+
+       // FRACTAL NOISE-BASED TEXTURE TO DELINEATE LAND AND SEA
+
+       float s = .5;
+       s += .40 * noise( 2. * vec3(x,N.y,z));
+       s += .20 * noise( 4. * vec3(x,N.y,z));
+       s += .10 * noise( 8. * vec3(x,N.y,z));
+       s += .05 * noise(16. * vec3(x,N.y,z));
+       s = step(s, 0.4);
+
+       // NOISE-BASED TEXTURE FOR THE LAND AREAS OF THE PLANET
+
+       float m = .5 + .5 * noise(30. * vec3(x,N.y,z));
+       color *= mix(vec3(.1,.9,.9), vec3(.9,.6,.3) * m, s);
+    }
+
+    // SIMPLE COHERENT NOISE TEXTURE FOR THE MOON.
+
+    if (ii == 1) {
+       color *= .8 + .5 * noise(5. * N);
+    }
+
+    return color;
+ }
+
+ // SHADE A SPHERE USING PHONG REFLECTION MODEL.
+
+ vec3 shadeSphere(int ii, vec3 P, vec3 N, mat4 M, vec3 W) {
+
+    // CALCULATE TEXTURE FOR THIS SPHERE
+
+    vec3 texture = textureSphere(ii, N);
+
+    // FETCH PHONG MATERIAL PROPERTIES.
+
+    vec3 ambient = M[0].rgb;
+    vec3 diffuse = M[1].rgb;
+    vec4 specular = M[2];
+
+    // START WITH JUST AMBIENT REFLECTION.
+
+    vec3 color = ambient * texture;
+
+    // LOOP THROUGH ALL LIGHT SOURCES.
+
+    for (int i = 0 ; i < nl ; i++) {
+
+       // SEE IF THE SURFACE POINT IS IN SHADOW FROM THIS LIGHT
+
+       vec3 Vs = P + 0.001 * uLDir[i];  // RAY FROM OUTSIDE SURFACE
+       vec3 Ws = uLDir[i];              // TOWARD LIGHT SOURCE.
+
+       // BY SHOOTING A SHADOW RAY FOR THIS LIGHT TO EVERY SPHERE.
+
+       float t = -1.;
+       for (int j = 0 ; j < ns ; j++)
+          t = max(t, raySphere(uSph[j], Vs, Ws));
+
+       // IF THE SURFACE POINT IS NOT IN SHADOW FROM THIS LIGHT
+
+       if (t < 0.) {
+
+          // ADD DIFFUSE COMPONENT
+
+          color += diffuse * max(0., dot(N,uLDir[i])) * uLCol[i] * texture;
+
+          // ADD SPECULAR COMPONENT
+
+          vec3 R = 2. * N * dot(N, uLDir[i]) - uLDir[i];
+          color += specular.rgb*pow(max(0.,dot(R,-W)),specular.a)*uLCol[i];
+
+       }
+    }
+    return color;
+ }
+
+ void main() {
+
+    // START WITH A DARK BLUE SKY.
+
+    vec3 color = vec3(0., 0., 0.05);
+
+    // TRACE A RAY AT THIS PIXEL DIRECTION.
+
+    vec3 V = vec3(0., 0., f);
+    vec3 W = normalize(vec3(vPos.x, vPos.y, -f));
+
+    // FIRST DETERMINE WHICH SPHERE WE HIT, IF ANY.
+
+    float t0 = 10000.; // HUGE STARTING VALUE FOR t.
+    vec3 P, N;
+    mat4 M;
+    int ii = -1;
+
+    // LOOP THROUGH ALL SPHERES.
+
+    for (int i = 0 ; i < ns ; i++) {
+       vec4 S = uSph[i];
+
+       //vec4 p = uMatrix * vec4(S.xyz, 1.);
+       //float t = raySphere(vec4(p.xyz, S.w), V, W);
+
+       float t = raySphere(S, V, W);
+
+       // IF THE RAY HITS THE SPHERE NEARER THAN ALL OTHERS
+
+       if (t > 0. && t < t0) {
+          t0 = t;
+          ii = i;
+
+          // COMPUTE SURFACE POSITION AND NORMAL DIRECTION.
+   
+          P = V + t * W;
+          N = normalize(P - S.xyz);
+          M = uPhong[i];
+       }
+    }
+
+    // IF THE RAY HAS HIT AT LEAST ONE SPHERE
+
+    if (ii >= 0) {
+
+       // SHADE AND TEXTURE THE SPHERE.
+
+       color = shadeSphere(ii, P, N, M, W);
+
+       // FORM A MIRROR REFLECTION RAY.
+
+       vec3 Wr = 2. * N * dot(N, -W) + W;
+       vec3 Vr = P + .001 * Wr;
+
+       // CHECK FOR MIRROR REFLECTION OF OTHER SPHERES.
+
+       int jj = -1;
+       vec3 Pr, Nr;
+       mat4 Mr;
+
+       float t0 = 1000.;
+       for (int j = 0 ; j < ns ; j++) {
+          float t = raySphere(uSph[j], Vr, Wr);
+	  if (t > 0. && t < t0) {
+	     t0 = t;
+	     jj = j;
+	     Pr = Vr + t * Wr;
+	     Nr = normalize(Pr - uSph[j].xyz);
+	     Mr = uPhong[j];
+	  }
+       }
+
+       // IF THERE IS A MIRROR REFLECTION, MIX IT INTO COLOR.
+
+       if (jj >= 0) {
+          vec3 mirrorColor = shadeSphere(jj, Pr, Nr, Mr, Wr);
+	  color = mix(color, mirrorColor, .5);
+       }
+    }
+
+    // ADD COHERENT NOISE-BASED ANIMATED LAYERED FOG
+
+    vec3 wind = vec3(-0.4 * uTime, 0., 0.);
+    float fog = .7 + .6 * noise(1.5 * vPos + wind);
+    float layer = 0.5 - 0.5 * vPos.y;
+    fog *= 2. * layer * layer;
+    color = mix(color, vec3(.1,.095,.09), fog);
+
+    // SET THE FINAL COLOR FOR THE PIXEL
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+The Other Side of Mickey
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Mickey is a typical tourist in the Awesome Space Museum.<br>
+After waiting for hours he finally got onto<br>
+a machine that will help him leave gravity behind<br>
+But something doesn't go as planned<br>
+"This is emergency department of the museum. What's going on?"<br>
+"Help, help, a mice is turning very sickly blue "<br>
+"How and why?"<br>
+"He is riding the Ultimate Accelerator, but it literally<br>
+accelerates nonstop, and now the tourist is in grave danger.<br>
+He looks totally blue and out of air."<br>
+"Did you see the big red emergency stop button?"<br>
+"I tried to press it several times, but it won't stop."<br>
+"That's totally impossible unless someone hack into<br>
+the world of Disney cartoon characters.”<br>
+"I wonder who that person is...We need help as soon as...<br>
+Oh no."<br>
+"What?"<br>
+"Mickey is..."<br>
+"What?"<br>
+"He is showing the side of him that no one has ever seen before."<br>
+"Angry you mean?"<br>
+"He is falling apart."<br>
+"Sad you mean?"<br>
+"It's hard to explain for now. Please come. We need your help!"<br>
+
+
+
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+
+////////////////// VECTOR MATH LIBRARY
+
+let dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+let norm = a => Math.sqrt(dot(a,a));
+let normalize = a => { let s = norm(a); return [ a[0]/s,a[1]/s,a[2]/s ]; }
+
+
+////////////////// CREATE MESH SHAPES //////////////////
+
+const VERTEX_SIZE = 3;
+
+let tmp;
+
+// SQUARE MESH
+
+let squareMesh = new Float32Array( [ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ] );
+
+
+// TUBE MESH
+
+tmp = [];
+
+for (let i = 0 ; i <= 16 ; i++) {
+   let theta = 2 * Math.PI * i / 16;
+   let c = Math.cos(theta);
+   let s = Math.sin(theta);
+   tmp.push(c,s,-1, c,s,1);
+}
+
+let tubeMesh = new Float32Array(tmp);
+
+
+// SPHERE MESH
+
+let uvToSphere = (u,v) => {
+   let phi = Math.PI * (v - .5);
+   let theta = 2 * Math.PI * u;
+   let x = Math.cos(phi) * Math.cos(theta);
+   let y = Math.cos(phi) * Math.sin(theta);
+   let z = Math.sin(phi);
+   return [ x, y, z ];
+}
+
+tmp = [];
+
+for (let j = 0 ; j < 16 ; j++) {
+   for (let i = 0 ; i < 32 ; i++) {
+      tmp = tmp.concat(uvToSphere( i/32 ,  j    / 16 ));
+      tmp = tmp.concat(uvToSphere( i/32 , (j+1) / 16 ));
+   }
+}
+
+let sphereMesh = new Float32Array(tmp);
+
+// TORUS MESH
+
+let uvToTorus = (u,v) => {
+   let phi = 2 * Math.PI * v;
+   let theta = 2 * Math.PI * u;
+   let x = (1.+.2*Math.cos(phi))*Math.cos(theta);
+   let y = (1.+.2*Math.cos(phi))*Math.sin(theta);
+   let z = .2*Math.sin(phi);
+   return [ x, y, z ];
+}
+
+tmp = [];
+
+for (let i = 0 ; i < 64 ; i++) {
+   for (let j = 0 ; j < 64 ; j++) {
+      tmp = tmp.concat(uvToTorus( i/64 ,  j/ 64 ));
+      tmp = tmp.concat(uvToTorus( (i+1)/64 , j / 64 ));
+      //tmp = tmp.concat(uvToTorus( (i-1)/32 , (j+1)/ 32 ));
+      //tmp = tmp.concat(uvToTorus( (i-1)/32 , j/ 32 ));
+   }
+}
+
+let TorusMesh = new Float32Array(tmp);
+
+////////////////// RESPOND TO MOUSE EVENTS.
+
+let isDown = false, mouseX = 0, mouseY = 0, mouseZ=0;
+
+canvas1.onPress = (x, y) => {
+   isDown = true;
+}
+
+canvas1.onDrag = (x, y) => {
+   mouseX = x;
+   mouseY = y;
+}
+
+canvas1.onRelease = (x, y) => {
+   isDown = false;
+}
+
+canvas1.onMove = (x, y) => {
+   mouseX = x;
+   mouseY = y;
+}
+
+////////////////// MAIN ANIMATE-FRAME CALLBACK
+
+let time = 0, now = Date.now(), nowX = 0, nowY = 0, nowZ=0, varyX = 0, varyY = 0, varyZ=0;
+
+function animate(gl) {
+
+   //let time = (Date.now() - startTime) / 1000;
+
+
+   // WHENEVER MOUSE IS PRESSED, STOP TIME AND DRAG FIGURE POSITION.
+   // We don't want to drag around Mickey, instead we want to rotate it.
+   if (! isDown){
+      time += (Date.now() - now) / 1000;
+   
+    //setUniform('Matrix4fv', 'uPhong', false, [
+      //.1,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0,
+     // .1,.05,.025,0,  .2,.1,.05,0,  .8,.4,.2,2,  0,0,0,0,
+   //]);
+
+  }
+   else {
+      time*=1.01;
+
+      setUniform('Matrix4fv', 'uPhong', false, [
+      .1*Math.cos(time),.1*Math.sin(time),.1+.05*time,0,  .2,.2,.2+.1*time,0,  .8,.8,.8+.1*time,20,  0,0,0,0,
+      .1*Math.cos(time),.05*Math.sin(time),.025+.05*time,0,  .2,.1,.05+.1*time,0,  .8,.4,.2+.1*time,2,  0,0,0,0,
+   ]);
+   }
+
+   now  = Date.now();
+   nowX = mouseX;
+   nowY = mouseY;
+   nowZ = mouseZ
+   setUniform('1f', 'uTime', time);
+
+   // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
+
+   let L0 = normalize([1,1,Math.sin(time)]);
+   let L1 = normalize([-1,-1,-1]);
+
+   setUniform('3fv', 'uLDir', L0.concat(L1));
+
+   setUniform('3fv', 'uLCol', [ 1,1,1,      .5,.5,.5 ] );
+
+   
+
+   // ANIMATE RAY TRACED OBJECTS IN THE FRAGMENT SHADER.
+
+   let x = .7 * Math.cos(time);
+   let z = .7 * Math.sin(time);
+   setUniform('4fv', 'uSph', [ 0,0,0,.4,
+                               x,0,z,.2 ] );
+
+
+/***************************************************
+    Perspective matrix to transform ( px, py, pz ):
+
+    x        1 0 0 0   px
+    y  /---  0 1 0 0   py
+    z  \---  0 0 1 0   pz
+    w        X Y Z 1   1
+
+    Resulting point in space is: ( x/w, y/w, z/w )
+***************************************************/
+
+   // ADD PERSPECTIVE TO THE VIEW
+
+  
+   let fl = 3; // FOCAL LENGTH OF CAMERA
+
+   setUniform('Matrix4fv', 'uCamera', false, [
+      1,0,0,0, 0,1,0,0, 0,0,1,1/fl, 0,0,0,1
+   ]);
+
+
+   // ADJUST RATE OF ANIMATION
+
+   let T = 2 * time;
+
+   // POSITION AND SCALE THE ENTIRE SCENE
+
+   mIdentity();
+   mScale(.45,.45,.45);
+   mTranslate(0,.85,0);
+
+   // PLACE THE GROUND PLANE
+
+   mSave();
+     mTranslate(0,-2.5,0);
+     mRotateX(Math.PI/2);
+     mScale(2,2,2);
+     drawMesh(squareMesh, m[mTop]);
+   mRestore();
+
+
+  if (time>5.){
+        mRotateY(time/2-2.5);
+      }
+
+   // ROTATE THE RUNNING PERSON OVER TIME
+//mTranslate(varyX, varyY, 0);
+
+ mRotateZ(T / 10);
+
+   mSave(); // START OF BODY
+   //Jumping Through the rotating torus
+   mSave();
+     mTranslate(0,-1.,0);
+     mRotateX(T);
+     mScale(2.,2.,.5);
+     mRotateZ(T / 10);
+     drawMesh(TorusMesh, m[mTop]);
+   mRestore();
+
+   // JUMP UP WITH EVERY STEP
+
+   mTranslate(0, .6 * Math.abs(Math.sin(T)), 0);
+
+   //Mikey's large ears
+   mSave();
+     mTranslate(-0.5, 0.3, 0);
+     mScale(.3,.3,.3);
+     mRotateX(Math.PI/2);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   mSave();
+     mTranslate(0.5, 0.3, 0);
+     mScale(.3,.3,.3);
+     mRotateX(Math.PI/2);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   // TORSO=Mickey's large head
+
+   mSave();
+     mTranslate(0, -.4, 0);
+     mScale(.6,.6,.6);
+     mRotateX(Math.PI/2);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   //Mickey's eyes
+   mSave();
+     mTranslate(-.15, -.3, -1.);
+     mScale(.1,.2,.1);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+   mSave();
+     mTranslate(.15, -.3, -1.);
+     mScale(.1,.2,.1);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   //Mickey's nose
+   mSave();
+     mTranslate(0, -.6, -1.3);
+     mScale(.2,.1,.1);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   mSave();
+     mTranslate(0, -.6, -1.3);
+     mScale(.2,.1,.1);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   //Mickey's mouth
+   //We use a sphere but make it less protrude than the head.
+
+   mSave();
+     mTranslate(0, -.7, -.25);
+     mScale(.3,.3,.3);
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+   //Mickey's torso
+   mSave();
+     mTranslate(0, -1.1, 0);
+     mScale(.3,.4,.3);
+     
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+   mSave();
+     mTranslate(0, -1.6, 0);
+     mScale(.4,.5,.2);
+
+     drawMesh(sphereMesh, m[mTop]); // torso
+   mRestore();
+
+
+
+
+   // HEAD
+   /*
+   mSave();
+     mTranslate(0, .25, 0);
+     mRotateZ(Math.sin(T));
+     mTranslate(0, .25, 0);
+     mScale(.2,.25,.2);
+     drawMesh(sphereMesh, m[mTop]); // head
+   mRestore();
+   */
+
+   // ARMS -- LOOP OVER LEFT AND RIGHT ARM,
+   // DRAWING UPPER AND LOWER ARM, BENDING AT SHOULDER AND ELBOW.
+   //We revise this to reflect Mikey's arms.
+
+   let al = 0.4, at = 0.08;
+   for (let side = -1 ; side <= 1 ; side += 2) {
+      mSave();
+        mTranslate(.4 * side, 0, 0);
+        let t = T+Math.PI * side / 2;
+        //mRotateZ(Math.PI/2);
+          // shoulder rotation
+        mTranslate(0,-1.,2*al);
+        mRotateZ(Math.cos(t));
+        mRotateZ(Math.PI/2*side);
+        mSave();
+	   
+           mRotateX(Math.PI/2);
+           mScale(at,.8,-.3);
+           
+           drawMesh(tubeMesh, m[mTop]); // upper arm
+        mRestore();
+        
+
+        //mRotateX(.5 + .5 * Math.sin(t));  // elbow rotation
+        
+        mSave();
+           mScale(.05,.05,.05);
+           mTranslate(0,-2.,-3.*al);
+           drawMesh(sphereMesh, m[mTop]); // lower arm
+        mRestore();
+        //palm rotation
+        mRotateZ(Math.cos(t)/3.);
+        //mRotateZ(Math.PI/2*side);
+
+        mSave();
+           mScale(.15,.3,.15);
+           mTranslate(0,-2.,-2.*al);
+           drawMesh(sphereMesh, m[mTop]); // palms
+        mRestore();
+        /*
+        mRotateZ(Math.PI/2*side);
+        mSave();
+           mScale(.05,.1,.05);
+           mTranslate(2.,-2.,-8.*al);
+           drawMesh(sphereMesh, m[mTop]); // THUMB
+        mRestore();
+        */
+
+
+       
+
+      mRestore();
+   }
+   
+   // LEGS -- LOOP OVER LEFT AND RIGHT LEG,
+   // DRAWING UPPER LEG, LOWER LEG AND FOOT, BENDING AT HIP, KNEE AND ANKLE.
+
+   let ll = 0.43, lt = 0.11;
+   for (let side = -1 ; side <= 1 ; side += 2) {
+      mSave();
+        mTranslate(.25 * side, -.9, 0);
+        let t = T + Math.PI * side / 2;
+
+        mRotateX(Math.PI/2);
+        mRotateY(Math.cos(t)*side/8);  // shoulder rotation
+        //Now for some reason,
+        //My code goes (x, -z, -y)
+        mTranslate(0,0,1.);
+        mTranslate(0,.45,0);
+
+        mSave();
+           mScale(lt,lt,ll);
+           drawMesh(tubeMesh, m[mTop]); // leg
+        mRestore();
+
+        mTranslate(0,0,ll);
+        mRotateY(Math.cos(t));
+        mRotateY(Math.PI/16*-side);  // ankle rotation
+        mRotateZ(Math.PI/16*-side);
+        mTranslate(side*0.3,0,0);
+
+        mSave();
+           mScale(.5,lt,ll/2);
+           drawMesh(sphereMesh, m[mTop]); // feet
+        mRestore();
+        /*
+        mTranslate(0,0,ll);
+        mRotateX(Math.PI/2 + Math.cos(t)/2);  // ankle rotation
+        mTranslate(0,0,ll/2);
+
+        mSave();
+           mScale(lt,lt/2,ll/2);
+           drawMesh(sphereMesh, m[mTop]); // foot
+        mRestore();
+        */
+
+      mRestore();
+   }
+
+   mRestore(); // END OF BODY
+}
+
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+
