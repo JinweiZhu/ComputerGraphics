@@ -1,30 +1,10 @@
- <script src=lib9.js></script>
+<script src=lib7.js></script>
 <script src=matrix.js></script>
 
 <body bgcolor=black text=white link=white alink=white vlink=white>
 <center>
 <canvas id='canvas1' width=600 height=600></canvas>
-
-
-<!! ----------------------------- SLIDERS ----------------------------->
-
-ROTATE VIEW <input type=range min=1 max=100 value=50 class=slider id=sceneRotateSlider>
-
-<p>
-
-SCALE Y <input type=range min=1 max=100 value=50 class=slider id=yScaleSlider>
-
-<p>
-
-RED <input type=range min=1 max=100 value=50 class=slider id=redSlider>
-GRN <input type=range min=1 max=100 value=50 class=slider id=grnSlider>
-BLU <input type=range min=1 max=100 value=50 class=slider id=bluSlider>
-
-<!! ------------------------------------------------------------------->
-
-
 </center>
-
 </body>
 
 
@@ -84,7 +64,7 @@ BLU <input type=range min=1 max=100 value=50 class=slider id=bluSlider>
 
     // ADD PROCEDURAL TEXTURE
 
-    //color *= .5 + .5 * noise(vAPos * 3.);
+    color *= 1. + .5 * noise(vAPos * 3.);
 
     gl_FragColor = vec4(sqrt(color), 1.0);
  }</script>
@@ -93,17 +73,24 @@ BLU <input type=range min=1 max=100 value=50 class=slider id=bluSlider>
 <!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
 
 <script id='my_title' type='text/html'>
-Floating Balloon Dog
+Rainbow-colored Bauhaus Chess Set
 </script>
 
 
 <!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
 
 <script id='my_instructions' type='text/html'><font color=#b0b0b0>
-Imagine going to an amusement park,<br>
-and the puppy coming alive<p>
-Color it the way you like<p>
-Hold the mouse down for it to tumble. <p>
+Everytime I go to the modern art exhibition,<br>
+I am always impressed with the bauhaus designs<br>
+that employe simple geometric shape<br>
+to create concise, comfortable and affordable furnitures<br>
+Their chess set is no exception<br>
+You can pretty much guess which piece is which<br>
+even if you look at them individually<br>
+The animation mimics the viable move of each piece<br>
+This time, as always, my king lags behind my troop<br>
+"Don't leave me,"he cries.<br>
+Unfortunately, even the queen does not notice<br>
 </script>
 
 
@@ -169,7 +156,7 @@ const VERTEX_SIZE = 6;       // x,y,z, nx,ny,nz
 
 // CREATE A PARAMETRIC MESH
 
-let createMesh = (nu, nv, uvToShape, info) => {
+let createMesh = (nu, nv, uvToShape, info,uPhong) => {
    let tmp = [];
    for (let j = 0 ; j < nv ; j++)
    for (let i = 0 ; i <= nu ; i++) {
@@ -214,7 +201,7 @@ let glueMeshes = meshes => {
 
 // SQUARE MESH
 
-let uvToSquare = (u,v,info) => {
+let uvToSquare = (u,v,info,uPhong) => {
    let k = 2, z = 0, s = 1;
 
    if (info) {
@@ -307,79 +294,12 @@ let uvToSphere = (u,v) => {
 let sphereMesh = createMesh(32, 16, uvToSphere);
 
 
-// LATHE MESH
-
-let epsilon = 0.001;
-
-let uvToLathe = (u,v,info) => {
-   let theta = 2 * Math.PI * u;
-   let z0 = evalCatmullRomSpline(v-epsilon/2, info[0]);
-   let z1 = evalCatmullRomSpline(v+epsilon/2, info[0]);
-   let r0 = evalCatmullRomSpline(v-epsilon/2, info[1]);
-   let r1 = evalCatmullRomSpline(v+epsilon/2, info[1]);
-   let x = r0 * Math.cos(theta);
-   let y = r0 * Math.sin(theta);
-   let N = normalize([x,y,(r0-r1)/(z1-z0)]);
-   return [x,y,z0,  N[0],N[1],N[2] ];
-}
-
-////////////////// RESPOND TO MOUSE EVENTS.
-
-let isDown = false, mouseX = 0, mouseY = 0;
-
-canvas1.onPress = (x, y) => {
-   isDown = true;
-}
-
-canvas1.onDrag = (x, y) => {
-   mouseX = x;
-   mouseY = y;
-}
-
-canvas1.onRelease = (x, y) => {
-   isDown = false;
-}
-
-canvas1.onMove = (x, y) => {
-   mouseX = x;
-   mouseY = y;
-}
-
-
 ////////////////// MAIN ANIMATE-FRAME CALLBACK
 
-//let time = 0, now = Date.now(), nowX = 0, nowY = 0, varyX = 0, varyZ = 0;
-
 function animate(gl) {
-	let time = (Date.now() - startTime) / 1000;
-
-   //let time = (Date.now() - startTime) / 1000;
-
-
-   // WHENEVER MOUSE IS PRESSED, STOP TIME AND DRAG FIGURE POSITION.
-
-   //if (! isDown)
-      //time += (Date.now() - now) / 1000;
-   //else {
-   	
-      //varyX += mouseX - nowX;
-      //varyZ -= mouseY - nowY;
-      
-  // }
-
-  	//time += (Date.now() - now) /1000;
-
-	
-
-   	
-
-   //now  = Date.now();
-   //nowX = mouseX;
-   //nowY = mouseY;
-   //time;
+   let time = (Date.now() - startTime) / 1000;
 
    setUniform('1f', 'uTime', time);
-
 
    // EACH LIGHT DIRECTION VECTOR MUST BE UNIT LENGTH.
 
@@ -390,13 +310,9 @@ function animate(gl) {
 
    setUniform('3fv', 'uLCol', [ .6,.8,1,      .5,.4,.3 ] );
 
-   // USED red,grn,blu SLIDER VALUES TO CONTROL OBJECT COLOR.
-
    setUniform('Matrix4fv', 'uPhong', false, [
-      .1*red,.1*grn,.1*blu,0,
-      .5*red,.5*grn,.5*blu,0,
-      1.*red,1.*grn,1.*blu,20,  0,0,0,0,
-      2.,2.,2.,0,  2.,2.,2.,0,  2.,2.,2.,2,  0,0,0,0,
+      .1,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0,
+      .1,.05,.025,0,  .2,.1,.05,0,  .8,.4,.2,2,  0,0,0,0,
    ]);
 
    // ANIMATE RAY TRACED OBJECTS IN THE FRAGMENT SHADER.
@@ -425,213 +341,291 @@ function animate(gl) {
    ]);
 
 
-   // ANIMATION CURVES
+   // ADJUST RATE OF ANIMATION
 
-   let t = (time / 4) % 1;
+    T = Math.max(0,(4 * time-12.));
 
-   let X = evalCatmullRomSpline(t, [-1,.5,0,-.5,-1]);
-   let Y = yScale * evalCatmullRomSpline(t, [0,.5,-.5,0,.5,-.5,0]);
-   let Z = evalCatmullRomSpline(t, [0,-1,1,0]);
-   let R = evalCatmullRomSpline(t, [0,-1,1,0]);
-
-   // DO ANIMATION
+   // POSITION AND SCALE THE ENTIRE SCENE
 
    mIdentity();
-   mRotateY(2 * Math.PI * rotateScene);
+   mScale(.45,.45,.45);
+   mTranslate(0,.85,0);
 
-   //mTranslate(.4*Math.cos(time),.4*Math.sin(time),0);
-   
- if (isDown){
- 	//time += (Date.now() - now) / 1000;
-    mRotateZ(time);
- }
-    mRotateZ(Math.PI/8*Z);
-    mRotateY(time/2);
-    mTranslate(0,-.3,0);
-   // DRAW A Ballon Dog
-   //
-   
+   // PLACE THE GROUND PLANE
+/*
+   mSave();
+     mTranslate(0,-2.65,0);
+     mRotateX(-Math.PI/2);
+     mScale(2,2,2);
+     drawifesh(squareMesh, m[mTop]);
+   mRestore();
+  */
 
-    //The Dog's body
-    
-    mScale(.5,.5,.5);
-    drawMesh(latheMeshSmooth,m[mTop]);
-    
-    //drawMesh(latheMeshTilt,m[mTop]);
-    //Now we start the upper body
-  mSave();
-    //This is the neck
-    mScale(.7,.7,.7);
-    mTranslate(0,.6,.8);
-    mRotateX(Math.PI/2);
-    drawMesh(latheMeshSmooth,m[mTop]);
-    //Now draw the Snot
+   // ROTATE THE RUNNING PERSON OVER TIME
 
-    mScale(1.4,1.4,1.4);
-    mTranslate(0,.5,-.5);
-    mRotateX(-Math.PI/2);
-    //mRotateZ(Math.PI/4 * X);
-    mRotateX(Math.PI/8 * X);
-    drawMesh(latheMeshTilt,m[mTop]);
-    //So this is the snot tip.
-    mSave();
+    //mRotateY(T / 3);
+ mTranslate(0,-1.5+0.03*T,0);
 
-    mScale(.2,.2,.2);
+ mSave();
+    
+    
+    //mTranslate(0,.03*T,0);
+    mTranslate(0,0,.5*Math.sin(T));
 
-    mTranslate(0,0,2.);
-     mRotateX(time);
-    drawMesh(sphereMesh,m[mTop]);
-    mRestore();
-    //Now draw the ears;
-    //Let the ears wave naturally
-    
-    mRotateX(-Math.PI/2);
-    mTranslate(.2,.5,.4);
-    
-    mRotateY(Math.PI/16);
-    mRotateZ(Math.PI/4 * X);
-    drawMesh(latheMeshTilt,m[mTop]);
-    
-    mSave();
-    mScale(.2,.2,.2);
-    mTranslate(.1,-1.4,-.5);
-    drawMesh(sphereMesh,m[mTop]);
+	 mTranslate(0,-.5,0);
+	
+	mSave();
+	mTranslate(-2.,0,0);
+	mScale(0.1,0.1,.1);
+    drawMesh(cubeMesh, m[mTop],[
+      1.,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
     mRestore();
 
-    mTranslate(-.4,0,0);
-    mRotateY(-Math.PI/8);
     mSave();
-    mScale(.2,.2,.2);
-    mTranslate(-.1,-1.4,-.5);
-    drawMesh(sphereMesh,m[mTop]);
+	mTranslate(-1.428,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
     mRestore();
-    drawMesh(latheMeshTilt,m[mTop]);
-  mRestore();
-//Now draw the front legs
-mSave();
-  mTranslate(.15,-.3,.5);
-  mScale(.6,.8,.6);
-  mRotateX(Math.PI/2);
-  mRotateX(Math.PI/3*X);
+    mSave();
+	mTranslate(-.857,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(-.286,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.1,0,  .2,1.,.2,0,  .1,.8,.2,10,  0,0,0,0
+      
+   ]);
+    mRestore();
 
-  drawMesh(latheMeshSmooth,m[mTop]);
-mRestore();
+    mSave();
+	mTranslate(0.286,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.8,0,  .2,.5,.5,0,  .1,.8,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+
+	mSave();
+	mTranslate(.857,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();   
+    mSave();
+	mTranslate(1.428,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(2.,0,0);
+	mScale(0.1,0.1,.1);
+    
+    drawMesh(cubeMesh, m[mTop],[
+      .2,.1,1.,0,  .3,.1,.5,0,  .4,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore(); 
+mRestore(); 
+//Animations of the pawns end here.
 mSave();
-  mTranslate(-.15,-.3,.5);
+
+//Now this is the Rook
+//They should first move forward but then suddenly escape 
+//If I can implement it it would be nice.
+//But for right now, I am satisfied with this moving straight ahead.
+    mSave();
+	mTranslate(-2.,-1.+0.03*T,0);
+	mTranslate(T*0.05,0,0);
+	mScale(0.2,0.2,.2);
+    drawMesh(cubeMesh, m[mTop],[
+      .2,.1,1.,0,  .3,.1,.5,0,  .4,.1,.8,10,  0,0,0,0
+      
+   ]);
+    mRestore();
+    mSave();
+	mTranslate(2.,-1.+0.03*T,0);
+	mTranslate(-T*0.05,0,0);
+	mScale(0.2,0.2,.2);
+    drawMesh(cubeMesh, m[mTop],[
+      1.,.1,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+    mRestore();
+mRestore();
+
+//Now these are the knights
+//They should leap forward with the pawns.
+mSave();
+	mTranslate(0,0.1*T,0);
+	//This is the knights' movement
+	//mTranslate(0,0.1*T,0);
+	mTranslate(0.1*Math.cos(T),0,0);
+	//Because the double layer horse is hard to visualize here.
+	//I simplify it to make it a reverse L shape.
+	//It's made up of a combination of a horizontalrectangle
+	//And another vertical rectangle.
+	
+	mSave();
+	mTranslate(-1.428,-.9,.1);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(-1.3,-1.05,.1);
+	mRotateZ(Math.PI/2);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      0,.1,1.,0,  .1,.1,.5,0,  .1,.1,.8,10,  0,0,0,0
+      
+   ])
+	mRestore();
+
+	mSave();
+	mTranslate(1.328,-.9,.1);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(1.2,-1.05,.1);
+	mRotateZ(Math.PI/2);
+	mScale(0.2,0.08,.1);
+	drawMesh(cubeMesh, m[mTop],[
+      .8,.2,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ])
+	mRestore();
+
+	
+mRestore();
+
+mSave();
+ mTranslate(0,0.06*T,0);
+//Now we make the bishops.
+//The bishops are basically just a cross.
+//So that would be 2 rectangles rotated.
+	//mTranslate(-.6,-1.,.1);
+	mSave();
+	//So we want the bishops to move in diagnals.
+	mTranslate(T*0.05,0,0);
+	mSave();
+		mTranslate(-.8,-1.,.1);
+
+		mRotateZ(Math.PI*(1/4));
+		mScale(0.28,0.05,.2);
+		drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+		mTranslate(-.8,-1.,.1);
+		mRotateZ(-Math.PI*(1/4));
+		mScale(0.28,0.05,.2);
+		drawMesh(cubeMesh, m[mTop],[
+      0,.3,1.,0,  .1,.3,.5,0,  .1,.4,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mRestore();
+
+	mSave();
+	mTranslate(-T*0.05,0,0);
+	mSave();
+	mTranslate(.857,-1.,.1);
+	mRotateZ(Math.PI*(1/4));
+	mScale(0.28,0.05,.2);
+	drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mSave();
+	mTranslate(.857,-1.,.1);
+	mRotateZ(-Math.PI*(1/4));
+	mScale(0.28,0.05,.2);
+	drawMesh(cubeMesh, m[mTop],[
+      .6,.6,.1,0,  .2,.2,.2,0,  .8,.8,.8,20,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+	mRestore();
+
+
+//Now finally we have the queen
+//Remember the queen is moving with the troops.
+//she is on a rampage: rotating throughout
+	mSave();
+
+	mTranslate(.05*T*Math.sin(T/2),.05*T*Math.cos(T/2),0);
+	mTranslate(-.27,-1.,.2);
+	mScale(0.2,.2,.2);
+	mRotateZ(T);
+	drawMesh(sphereMesh, m[mTop],[
+      .1,1.,.8,0,  .2,.5,.5,0,  .1,.8,.8,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
+
+
+
+mRestore();
+
+//Now we have the emperor who is totally confused
+
+	mSave();
+
+	mTranslate(.27+.1*Math.sin(T/2.),-1.-0.02*T,.2+.5*Math.sin(T/2.));
+	
+	mScale(0.2,.2,.2);
+	mRotateZ(Math.PI/4);
+
+	drawMesh(cubeMesh, m[mTop],[
+      .1,1.,.1,0,  .2,1.,.2,0,  .1,.8,.2,10,  0,0,0,0
+      
+   ]);
+	mRestore();
+
   
 
-  mScale(.6,.8,.6);
-  mRotateX(Math.PI/2);
-  mRotateX(-Math.PI/3*X);
-
-  drawMesh(latheMeshSmooth,m[mTop]);
-mRestore();
-
-//Now draw the backlegs
-mSave();
-  mTranslate(.15,-.3,-.6);
-  
-
-  mScale(.6,.7,.6);
-  mRotateX(Math.PI/2);
-  mRotateZ(Math.PI*Z);
-  mRotateY(Math.PI/8*Z);
-  drawMesh(latheMeshSmoothTimed,m[mTop]);
-mRestore();
-mSave();
-  mTranslate(-.15,-.3,-.6);
-  
-
-  mScale(.6,.7,.6);
-  mRotateX(Math.PI/2);
-  mRotateZ(Math.PI*Z);
-mRotateY(-Math.PI/8*Z);
-  drawMesh(latheMeshSmoothTimed,m[mTop]);
-mRestore();
-//Finally the tail
-mRotateZ(Z);
-mTranslate(0,.4,-.6);
-mRotateX(-Math.PI/2);
 
 
-drawMesh(latheMeshTilt,m[mTop]);
-
-
-   mTranslate(-.7,1.,0);
-   mScale(.2,.2,.4);
-   //drawMesh(sphereMeshSmooth,m[mTop]);
-//mRestore
-   
-   mScale(.2,.2,.2);
-   //drawMesh(sphereMesh,m[mTop]);
-   mScale(.5,.5,.5);
-   //drawMesh(latheMeshTilt, m[mTop]);
-   console.log(red);
-   //drawMesh(latheMeshSmooth, m[mTop]);
 }
-
-let catmullRomMatrix = [ -.5,1,-.5,0, 1.5,-2.5,0,1, -1.5,2,.5,0, .5,-.5,0,0 ];
-
-let evalCatmullRomSpline = (t, K) => {
-   t = Math.max(0, Math.min(t, .9999));
-   let n = K.length - 1;
-   let i = Math.floor(n * t);
-   let f = (n * t) % 1.0;
-
-   let A = K[Math.max(0, i-1)];
-       B = K[i];
-       C = K[i+1];
-       D = K[Math.min(n, i+2)];
-
-   let c = matrixTransform(catmullRomMatrix, [A,B,C,D]);
-
-   return c[0] * f*f*f + c[1] * f*f + c[2] * f + c[3];
-}
-
-let latheMeshSmooth = createMesh(32, 32, uvToLathe,
-
-[
-   [-.8,-.6,0,.6,.8], // VARY Z AS A FUNCTION OF V
-
-   [0,.35,.5,.35,0]   // VARY R AS A FUNCTION OF V
-]);
-
-let latheMeshTilt = createMesh(32, 32, uvToLathe,
-
-[
-   [-.6,-.4,0,.4,.6], // VARY Z AS A FUNCTION OF V
-
-   [0,.22,.3,.29,0]   // VARY R AS A FUNCTION OF V
-]);
-
-let latheMeshSmoothTimed = createMesh(32, 32, uvToLathe,
-
-[
-   [-.8,-.6,0,.6,.8], // VARY Z AS A FUNCTION OF V
-
-   [0,.35,.5,.35,0]   // VARY R AS A FUNCTION OF V
-]);
-
-/////////////////////////////////////////////////
-//
-// SLIDERS CALLBACK FUNCTIONS
-
-let rotateScene = 0;
-sceneRotateSlider.oninput = function() {
-   rotateScene = this.value / 100;
-}
-
-let yScale = 0;
-yScaleSlider.oninput = function() {
-   yScale = .5 + .5 * this.value / 100;
-}
-
-let red = .5, grn = .5, blu = .5;
-redSlider.oninput = function() { red = this.value / 100; }
-grnSlider.oninput = function() { grn = this.value / 100; }
-bluSlider.oninput = function() { blu = this.value / 100; }
-
-/////////////////////////////////////////////////
 
 
 // START EVERYTHING.

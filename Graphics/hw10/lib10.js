@@ -171,24 +171,20 @@ let setColor = rgb => {
 
 let drawIndex = 0, drawArray = [], hitIndex = -1;
 
-let drawMesh = (mesh, rgb, objectName) => {
+let drawMesh = (mesh, rgb) => {
    drawArray[drawIndex++] = {
       mesh:   mesh,
       matrix: m[mTop],
-      rgb:    rgb;
-      name: objectName;
+      rgb:    rgb
    };
 } 
 
 let drawMeshInArray = i => {
    let mesh = drawArray[i].mesh,
        M    = drawArray[i].matrix,
-       rgb  = drawArray[i].rgb,
-       name =drawArray[i].name;
-
+       rgb  = drawArray[i].rgb;
 
    if (i == hitIndex)
-      
       rgb = [1,0,0];
 
    if (rgb)

@@ -335,8 +335,8 @@ function animate(gl) {
 
    setUniform('3fv', 'uLCol', [ .5,.5,.5,      .5,.5,.5 ] );
 
-   let x = .7 * Math.cos(time)-time;
-   let z = .7 * Math.sin(time)-time;
+   let x = .7 * Math.cos(time);
+   let z = .7 * Math.sin(time);
    setUniform('4fv', 'uSph', [ 0,0,0,.4,
                                x,0,z,.2 ] );
 }

@@ -5,27 +5,8 @@
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
-/*
 let fragmentShaderHeader = [''                      // WHATEVER CODE WE WANT TO PREDEFINE FOR FRAGMENT SHADERS
 ,'   precision highp float;'
-].join('\n');
-*/
-
-let fragmentShaderHeader = [''                      // WHATEVER CODE WE WANT TO PREDEFINE FOR FRAGMENT SHADERS
-,'   precision highp float;'
-,'precision highp float;'
-,'float noise(vec3 v) {'
-,'   vec4 r[2];'
-,'   const mat4 E = mat4(0.,0.,0.,0., 0.,.5,.5,0., .5,0.,.5,0., .5,.5,0.,0.);'
-,'   for (int j = 0 ; j < 2 ; j++)'
-,'   for (int i = 0 ; i < 4 ; i++) {'
-,'      vec3 p = .60*v + E[i].xyz, C = floor(p), P = p - C-.5, A = abs(P), D;'
-,'      C += mod(C.x+C.y+C.z+float(j),2.) * step(max(A.yzx,A.zxy),A)*sign(P);'
-,'      D  = 314.1*sin(59.2*float(i+4*j) + 65.3*C + 58.9*C.yzx + 79.3*C.zxy);'
-,'      P=p-C-.5;r[j][i] = dot(P,fract(D)-.5)*pow(max(0.,1.-2.*dot(P,P)),4.);'
-,'   }'
-,'   return 6.50 * (r[0].x+r[0].y+r[0].z+r[0].w+r[1].x+r[1].y+r[1].z+r[1].w);'
-,'}'
 ].join('\n');
 
 let nfsh = fragmentShaderHeader.split('\n').length; // NUMBER OF LINES OF CODE IN fragmentShaderHeader
@@ -33,38 +14,7 @@ let nfsh = fragmentShaderHeader.split('\n').length; // NUMBER OF LINES OF CODE I
 let isFirefox = navigator.userAgent.indexOf('Firefox') > 0;         // IS THIS THE FIREFOX BROWSER?
 let errorMsg = '';
 
-
-addEventListenersToCanvas = function(canvas) {
-   let r = canvas.getBoundingClientRect();
-   let toX = x => 2 * (x-18 - r.left) / canvas.width - 1,
-       toY = y => (canvas.height - 2 * (y - r.top)) / canvas.width;
-
-   if (! canvas.onDrag   ) canvas.onDrag    = (x, y) => { };
-   if (! canvas.onMove   ) canvas.onMove    = (x, y) => { };
-   if (! canvas.onPress  ) canvas.onPress   = (x, y) => { };
-   if (! canvas.onRelease) canvas.onRelease = (x, y) => { };
-
-   canvas.addEventListener('mousemove', function(e) {
-      this._response = this._isDown ? this.onDrag : this.onMove;
-      this._response(toX(e.clientX), toY(e.clientY));
-   });
-
-   canvas.addEventListener('mousedown', function(e) {
-      this.onPress(toX(e.clientX), toY(e.clientY));
-      this._isDown = true ;
-   });
-
-   canvas.addEventListener('mouseup'  , function(e) {
-      this.onRelease(toX(e.clientX), toY(e.clientY));
-      this._isDown = false;
-   });
-}
-
-
-function gl_start(canvas, vertexShader, fragmentShader) {
-
-   addEventListenersToCanvas(canvas);
-
+function gl_start(canvas, vertexShader, fragmentShader) {           // START WEBGL RUNNING IN A CANVAS
 
    setTimeout(function() {
       try { 
@@ -117,20 +67,12 @@ function gl_start(canvas, vertexShader, fragmentShader) {
 	 gl.program = program;
 
          gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());                     // Create a square as a triangle strip
-
-	 let bpe = Float32Array.BYTES_PER_ELEMENT;
-
-	 gl.enable(gl.DEPTH_TEST);
-	 gl.depthFunc(gl.LEQUAL);
-	 gl.clearDepth(-1);
+         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(                       //    consisting of two triangles.
+                       [ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ]), gl.STATIC_DRAW);
 
          let aPos = gl.getAttribLocation(program, 'aPos');                      // Set aPos attribute for each vertex.
          gl.enableVertexAttribArray(aPos);
-         gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, VERTEX_SIZE * bpe, 0 * bpe);
-
-         let aNor = gl.getAttribLocation(program, 'aNor');                      // Set aNor attribute for each vertex.
-         gl.enableVertexAttribArray(aNor);
-         gl.vertexAttribPointer(aNor, 3, gl.FLOAT, false, VERTEX_SIZE * bpe, 3 * bpe);
+         gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
       }
 
       canvas.setShaders(vertexShader, fragmentShader);                     // Initialize everything,
@@ -139,14 +81,8 @@ function gl_start(canvas, vertexShader, fragmentShader) {
          gl = canvas.gl;
          if (gl.startTime === undefined)                                            // First time through,
             gl.startTime = Date.now();                                              //    record the start time.
-
-         drawIndex = 0;
          animate(gl);
-	 hitTesting();
-
-	 for (let i = 0 ; i < drawIndex ; i++)
-	    drawMeshInArray(i);
-
+         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);                                    // Render the square.
       }, 30);
 
    }, 100); // Wait 100 milliseconds after page has loaded before starting WebGL.
@@ -155,61 +91,6 @@ function gl_start(canvas, vertexShader, fragmentShader) {
 // THE animate() CALLBACK FUNCTION CAN BE REDEFINED IN index.html.
 
 function animate() { }
-function hitTesting() { }
-
-let setColor = rgb => {
-
-   // USED red,grn,blu SLIDER VALUES TO CONTROL OBJECT COLOR.
-
-   setUniform('Matrix4fv', 'uPhong', false, [
-      .1*rgb[0],.1*rgb[1],.1*rgb[2],0,
-      .2*rgb[0],.2*rgb[1],.2*rgb[2],0,
-      .8*rgb[0],.8*rgb[1],.8*rgb[2],20,  0,0,0,0,
-      .1,.05,.025,0,  .2,.1,.05,0,  .8,.4,.2,2,  0,0,0,0,
-   ]);
-}
-
-let drawIndex = 0, drawArray = [], hitIndex = -1, object=undefined;
-
-let drawMesh = (mesh, rgb, objectName) => {
-   drawArray[drawIndex++] = {
-      mesh:   mesh,
-      matrix: m[mTop],
-      rgb:    rgb,
-      name: objectName,
-   };
-} 
-
-let drawMeshInArray = i => {
-   let mesh = drawArray[i].mesh,
-       M    = drawArray[i].matrix,
-       rgb  = drawArray[i].rgb,
-       name =drawArray[i].name;
-       //console.log(rgb);
-      //console.log(name);
-
-   if (i == hitIndex){
-      if (typeof dict!== "undefined"){
-      //rgb = [1,0,0];
-      object=dict.get(name);
-
-      //console.log(object);
-      
-     //dict.get(name).move();
-      }
-   }
-
-   if (rgb)
-      setColor(rgb);
-
-   setUniform('Matrix4fv', 'uMatrix', false, M);
-   setUniform('Matrix4fv', 'uIMatrix', false, matrixInverse(M));
-   gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
-   gl.drawArrays(gl.TRIANGLE_STRIP, 0, mesh.length / VERTEX_SIZE);
-};
-   
-
-
 
 let gl;
 function setUniform(type, name, a, b, c, d, e, f) {

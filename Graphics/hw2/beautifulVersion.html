@@ -1,0 +1,232 @@
+<script src=lib2.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER: THIS IS WHEE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+ uniform float uTime;   // TIME, IN SECONDS
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // FOCAL LENGTH OF CAMERA ROUGHLY MIMICS A STANDARD 50mm LENS
+
+ float f = 3.0;
+
+ // FUNCTION TO INTERSECT A SPHERE WITH A RAY
+ //input: A Sphere taking (x,y,z,w(the radius))
+ //V and W 3D vectors.
+ //Output: t a floating point number
+
+ float raySphere(vec4 S, vec3 V, vec3 W) {
+    V -= S.xyz;
+    float vw = dot(V, W);
+    float d = vw * vw - dot(V, V) + S.w * S.w;
+    return d < 0. ? -1. : -vw - sqrt(d);
+ }
+
+ void main() {
+
+ // AN ORBITING SPHERE
+ //I will use the orbit sphere for the final product.
+
+ vec4 S = vec4(0., min(.2, -1.+uTime*0.1), 0., 0.5);
+
+ // A STATIONARY SPHERE AT THE ORIGIN
+ //I will use stationary sphere for design, so it's easier to see what has changed.
+ //The ball is a little too big, so I change the radius to 0.7.
+
+    //vec4 S = vec4(0., 0., 0., 0.5);
+
+ // THE LIGHT SOURCE DIRECTION
+ // So I put change the light source angel to coming from the front.
+
+    vec3  L = normalize(vec3(0,0,1.));
+    vec3  L2 = normalize(vec3(cos(uTime),cos(uTime), 3.));
+
+ // START WITH A DARK BLUE SKY
+ //Bluer!!!
+
+    vec3 color = vec3(0., 0., 0.1);
+
+ // TRACE A RAY AT THIS PIXEL DIRECTION
+//So this is the important part.
+//I don't want to revise it but I want to make sure I understand what is going on.
+//So V is the shortest vector starting from the screen and point to viewer's eye.
+//So V+Wt can reach everypoint on the screen by basic rules of linear algebra.
+    vec3 V = vec3(0., 0., f);
+//But there is a distance between the center of the sphere
+//and the start of V vector. And we want to shift V vector 
+//later to simplify the calculation. Essentailly, we are 
+
+//assuming the shortest distance between the eye and the 
+
+//screen lands perfectly on the center of the sphere.
+
+    vec3 W = normalize(vec3(vPos.x, vPos.y, -f));
+
+    float t = raySphere(S, V, W);
+
+// IF THE RAY HITS THE SPHERE
+
+    if (t > 0.) {
+
+    // COMPUTE SURFACE POSITION AND NORMAL DIRECTION
+   //P is thus the vector between eye and the ray going 
+   //all the way to the center of the sphere.
+       vec3 P = V + t * W;
+       vec3 N = normalize(P - S.xyz);
+
+    // DO DIFFUSE SHADING
+
+       float r = 0.1+.9 * max(0.4, dot(1.+N*abs(vPos.y*3.), (L+L2)));
+       
+
+       float g = 0.1+.9 * max(0.0, dot((.2+N*(-vPos.y)*1.), L+2.*L2));
+       float b = 0.1+.9 * max(0.0, dot((.5+N*(-vPos.y)*3.), L+2.*L2));
+       
+      
+
+       color = vec3(r, g, b);
+
+    // ANIMATED ROTATION OF THE SPHERE TEXTURE.
+    // SPECIFICALLY, WE ARE ROTATING N.x AND N.z OVER TIME:
+
+       float theta = 0.2 * uTime;
+       float x =  N.x * cos(theta) + N.z * sin(theta);
+       float z = -N.x * sin(theta) + N.z * cos(theta);
+
+    // FRACTAL NOISE-BASED TEXTURE TO DELINEATE LAND AND SEA
+
+       float s =0.6;
+       s += .40 * noise( 2. * vec3(x,N.y,z));
+       s += .20 * noise( 4. * vec3(x,N.y,z));
+       s += .10 * noise( 8. * vec3(x,N.y,z));
+       s += .05 * noise(16. * vec3(x,N.y,z));
+       s = step(s, 0.4);
+
+    // NOISE-BASED TEXTURE FOR THE LAND AREAS OF THE PLANET
+
+       float m = .5 + .5 * noise(30. * vec3(x,N.y,z));
+       //color = mix(vec3(0.1,0.1,0.1), color, s);
+    }
+
+ // NOISE-BASED ANIMATED LAYERED FOG
+ //I want the fog to be cloud in this case to give it a picturesque feeling.
+
+
+    vec3 wind = vec3(-0.6 * uTime, 0., 0.);
+    float fog = .7 + .6 * noise(1.5 * vPos + wind);
+    //I want the cloud layer to be the most dense around the sun.
+    float layer = .5-vPos.y;
+    fog *= 0.2 * layer * layer;
+    //With vec3 a high number, the cloud is finally white.
+    color = mix(color, vec3(2.-min(.5, uTime*0.1),1.,1.), fog);
+
+ // SET THE FINAL COLOR FOR THE PIXEL
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+The Rising Sun/Moon?
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Is it a sun, a moon, a peach, or a pokemon ball?
+Wait for it, there must be a moment that you like best.
+<p>
+I apply a time function to the position of the Sun and to
+its color, so it seems like just coming out of the cloud. 
+The combination of time function and position function 
+allows me to make the transition seems natural. I also 
+allows a second beam of light to hit the globe so the moon's
+own color change and the change of light over time provides
+a variety of combination of colors, making it never boring.
+Also, the color of the fog changes a little bit as the sun rise as well.
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+   setUniform('1f', 'uTime', time);
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

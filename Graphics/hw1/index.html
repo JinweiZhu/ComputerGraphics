@@ -1,0 +1,169 @@
+<script src=lib1.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // EXAMPLE OF A FUNCTION DEFINITION FROM CLASS:
+ // A DISK WITH A SPECIFIED CENTER AND RADIUS
+
+ float disk(vec3 C, float x, float y) {
+    x -= C.x;
+    y -= C.y;
+    float r = C.z;
+
+    // HERE IS HOW WE DID THIS IN CLASS.
+
+    // return x * x + y * y > r * r ? 0. : 1.;
+
+    // THIS IS BETTER. IT USES NO CONDITIONALS:
+
+    return step(x * x + y * y, r * r);
+ }
+
+ // YOU MUST DEFINE A main() FUNCTION.
+
+ void main() {
+
+ ////////////////////////////////////////////////
+ //
+ // HERE, FOR YOUR HOMEWORK, YOU CAN WRITE ANY
+ // CODE YOU LIKDEFINE A COLOR FOR THIS FRAGMENT.
+
+    // vPos IS THE 3D LOCATION OF THIS FRAGMENT.
+
+    vec2 v = vPos.xy;
+    float x = v.x;
+    float y = v.y;
+
+    float red   = log(4. * abs(x)) * .5 ;
+    float green = log(30. * y) * .5 ;
+    float blue  = .75 + .5 * sin(10. * uTime);
+
+    // EACH OF R,G,B RANGE FROM 0.0 TO 1.0.
+
+    vec3 color = vec3(red, green, blue);
+
+    // IN CLASS WE INTERSECTED TWO ANIMATING
+    // DISKS TO MAKE A BLINKING EYE.
+
+    //float open = .6 + .5 * sin(uTime);
+    color *= disk(vec3(tan(tan(3.*uTime)),sin(tan(3.*uTime)), .5), 5.0*x, 5.0*y );
+    
+
+ ////////////////////////////////////////////////
+
+ // THIS LINE OUTPUTS THE FRAGMENT COLOR
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+HERE YOU CAN GIVE YOUR PROGRAM A TITLE
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Here you can write a description<br>
+in HTML format of what your program<br>
+is doing, and why you wrote it.
+<p>
+<i>For example:</i>
+<p>
+This is a really simple fragment shader<br>
+program I wrote so the students in my<br>
+computer graphics class can see how<br>
+<code>uTime</code> and <code>vPos</code> can be the inputs for<br>
+a fragment shader, and <code>gl_FragColor</code><br>
+is the output.
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+   setUniform('1f', 'uTime', time);
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+
